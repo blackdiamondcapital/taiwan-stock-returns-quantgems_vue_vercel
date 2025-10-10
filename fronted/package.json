@@ -1,22 +1,37 @@
 {
-  "name": "quantgem-frontend",
+  "name": "quantgem-vue",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite fronted --config fronted/vite.config.js",
+    "server": "node backend/server/server.js",
+    "dev:full": "concurrently -k \"npm:server\" \"npm:dev\"",
+    "build": "vite build fronted --config fronted/vite.config.js",
+    "preview": "vite preview fronted --config fronted/vite.config.js"
   },
   "dependencies": {
-    "vue": "^3.5.0",
-    "vuedraggable": "^4.1.0",
-    "sortablejs": "^1.15.0"
+    "bcrypt": "^6.0.0",
+    "chart.js": "^4.5.0",
+    "chartjs-plugin-zoom": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "echarts": "^6.0.0",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^7.0.6",
+    "pg": "^8.11.3",
+    "sortablejs": "^1.15.6",
+    "vue": "^3.5.21",
+    "vuedraggable": "^4.1.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0",
-    "@vitejs/plugin-vue": "^5.0.0"
+    "@vitejs/plugin-vue": "^6.0.1",
+    "concurrently": "^8.2.2",
+    "vite": "^7.1.6"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=16"
   }
 }
