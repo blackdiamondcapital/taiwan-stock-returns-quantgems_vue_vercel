@@ -31,7 +31,6 @@ const pool = new Pool(baseConfig);
 // 驗證JWT Token中間件
 // ===================================
 async function requireAuth(req, res, next) {
-{{ ... }}
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     
