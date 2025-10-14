@@ -1,17 +1,37 @@
 import jwt from 'jsonwebtoken';
 import pkg from 'pg';
+
 const { Pool } = pkg;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/quantgem'
-});
+const baseConfig = process.env.DATABASE_URL
+  ? { connectionString: process.env.DATABASE_URL }
+  : {
+      host: process.env.DB_HOST || 'localhost',
+      port: Number(process.env.DB_PORT) || 5432,
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME || 'quantgem'
+    };
+
+const requireSsl = String(process.env.DB_SSL_REQUIRE ?? (process.env.NODE_ENV === 'production'))
+  .toLowerCase() === 'true';
+
+if (requireSsl) {
+  baseConfig.ssl = {
+    require: true,
+    rejectUnauthorized: false
+  };
+}
+
+const pool = new Pool(baseConfig);
 
 // ===================================
 // 驗證JWT Token中間件
 // ===================================
 async function requireAuth(req, res, next) {
+{{ ... }}
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     
