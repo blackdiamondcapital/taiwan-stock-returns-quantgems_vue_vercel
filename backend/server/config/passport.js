@@ -1,13 +1,7 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
-import pkg from 'pg';
-const { Pool } = pkg;
-
-// 資料庫連線
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/quantgem'
-});
+import { pool } from '../pool.js';
 
 // ===================================
 // Passport 序列化與反序列化
