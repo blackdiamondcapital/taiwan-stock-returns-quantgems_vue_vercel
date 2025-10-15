@@ -15,7 +15,26 @@ const requireSsl = String(process.env.DB_SSL_REQUIRE ?? (process.env.NODE_ENV ==
   .toLowerCase() === 'true';
 
 if (requireSsl) {
-  baseConfig.ssl = { require: true, rejectUnauthorized: false };
+  baseConfig.ssl = { 
+    rejectUnauthorized: false 
+  };
 }
 
+// 連接池配置
+baseConfig.max = 10; // 最大連線數（免費方案建議 5-10）
+baseConfig.idleTimeoutMillis = 30000; // 閒置連線 30 秒後釋放
+baseConfig.connectionTimeoutMillis = 10000; // 連線超時 10 秒
+
 export const pool = new Pool(baseConfig);
+
+// 連接池錯誤處理
+pool.on('error', (err) => {
+  console.error('Unexpected pool error:', err);
+});
+
+// 優雅關閉
+process.on('SIGTERM', () => {
+  pool.end(() => {
+    console.log('Pool has ended');
+  });
+});
