@@ -2,19 +2,9 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import fetch from 'node-fetch';
 import jwt from 'jsonwebtoken';
-import pkg from 'pg';
+import { pool } from '../pool.js';
 
-const { Pool } = pkg;
 const router = express.Router();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
