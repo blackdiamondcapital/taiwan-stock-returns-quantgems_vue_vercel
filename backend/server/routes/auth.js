@@ -1,15 +1,10 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import pkg from 'pg';
 import passport from '../config/passport.js';
-const { Pool } = pkg;
-const router = express.Router();
+import { pool } from '../pool.js';
 
-// 資料庫連線
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/quantgem'
-});
+const router = express.Router();
 
 // JWT 密鑰（生產環境應使用環境變數）
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
