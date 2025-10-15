@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import pkg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
@@ -10,8 +9,7 @@ import authRoutes from './routes/auth.js';
 import paymentRoutes from './routes/payment.js';
 import notificationRoutes from './routes/notifications.js';
 import createStockRoutes from './routes/stocks.js';
-
-const { Pool } = pkg;
+import { pool } from './pool.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // .env has already been loaded via import 'dotenv/config' at module load time
@@ -48,28 +46,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// PostgreSQL pool
-const baseConfig = process.env.DATABASE_URL
-  ? { connectionString: process.env.DATABASE_URL }
-  : {
-      host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 5432,
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME || 'quantgem',
-    };
-
-const requireSsl = String(process.env.DB_SSL_REQUIRE ?? (process.env.NODE_ENV === 'production'))
-  .toLowerCase() === 'true';
-
-if (requireSsl) {
-  baseConfig.ssl = {
-    require: true,
-    rejectUnauthorized: false,
-  };
-}
-
-const pool = new Pool(baseConfig);
+// PostgreSQL pool is imported from ./pool.js
 
 const stockRoutes = createStockRoutes(pool);
 
