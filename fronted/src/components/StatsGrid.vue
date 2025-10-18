@@ -697,5 +697,192 @@ const handleDragEnd = () => {
   border: none;
   text-align: center;
 }
+
+/* === 響應式設計 (Mobile-First) === */
+
+/* 手機版 (<640px) */
+@media (max-width: 639px) {
+  .stats-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .stats-header-left,
+  .stats-header-center,
+  .stats-header-right {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .stats-title {
+    font-size: 1.25rem;
+    text-align: center;
+  }
+
+  .period-toolbar {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .period-chip-group {
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .period-chip-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .period-chip {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    flex: 1 0 auto;
+  }
+
+  .market-select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.6rem 2.2rem 0.6rem 1rem;
+    font-size: 1rem;
+  }
+
+  .settings-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .stat-card {
+    padding: 16px;
+  }
+
+  .stat-value {
+    font-size: 1.8rem;
+  }
+
+  .stat-subinfo {
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+  }
+
+  .group-header-bar {
+    padding: 12px 14px;
+  }
+
+  .group-name {
+    font-size: 0.95rem;
+  }
+}
+
+/* 小平板 (640px - 767px) */
+@media (min-width: 640px) and (max-width: 767px) {
+  .stats-header {
+    flex-wrap: wrap;
+  }
+
+  .stats-header-center {
+    order: 3;
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .period-chip {
+    min-height: 40px;
+  }
+
+  .stat-value {
+    font-size: 2rem;
+  }
+}
+
+/* 平板 (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .period-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .stat-value {
+    font-size: 2.1rem;
+  }
+}
+
+/* 桌面 (1024px+) */
+@media (min-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* 大螢幕 (1440px+) */
+@media (min-width: 1440px) {
+  .stats-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 18px;
+  }
+
+  .stat-card {
+    padding: 22px;
+  }
+
+  .stat-value {
+    font-size: 2.4rem;
+  }
+}
+
+/* 超大螢幕 (1920px+) */
+@media (min-width: 1920px) {
+  .stats-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 20px;
+  }
+}
+
+/* Touch 設備優化 */
+@media (hover: none) and (pointer: coarse) {
+  .period-chip,
+  .settings-btn,
+  .group-header-bar {
+    min-height: 44px;
+  }
+
+  .period-chip:active {
+    transform: scale(0.96);
+    background: rgba(100, 200, 255, 0.2);
+  }
+
+  .stat-card:hover {
+    transform: none;
+  }
+
+  .drag-handle {
+    opacity: 1;
+    font-size: 1.2rem;
+  }
+}
 </style>
 
