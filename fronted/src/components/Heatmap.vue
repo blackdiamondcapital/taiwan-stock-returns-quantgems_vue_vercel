@@ -50,8 +50,10 @@ const filteredSorted = computed(() => {
 
 // 點擊格子顯示詳情面板
 function showDetail(stock) {
+  console.log('showDetail called', stock)
   detailPanel.stock = stock
   detailPanel.show = true
+  console.log('detailPanel state:', detailPanel)
 }
 
 // 關閉面板
@@ -82,6 +84,7 @@ function onSizeChange(){
 </script>
 
 <template>
+  <div class="heatmap-wrapper">
   <div class="heatmap-container">
     <div class="table-header">
       <div class="table-title">
@@ -101,6 +104,9 @@ function onSizeChange(){
           <input v-model.number="state.cellSize" @input="onSizeChange" type="range" min="36" max="96" />
         </div>
         <button class="btn-primary" @click="emit('refresh')"><i class="fas fa-sync-alt"></i> 更新</button>
+        <button class="btn-primary" @click="showDetail({ symbol: 'TEST', name: '測試股票', return: 5.5 })" style="background: #f59e0b;">
+          <i class="fas fa-bug"></i> 測試面板
+        </button>
       </div>
     </div>
 
@@ -124,6 +130,7 @@ function onSizeChange(){
         </div>
       </template>
     </div>
+  </div>
 
     <!-- 側邊詳情面板 -->
     <transition name="slide-panel">
@@ -231,6 +238,11 @@ function onSizeChange(){
 </template>
 
 <style scoped>
+/* === Wrapper === */
+.heatmap-wrapper {
+  position: relative;
+}
+
 /* === 側邊詳情面板樣式 === */
 .detail-panel {
   position: fixed;
@@ -242,7 +254,7 @@ function onSizeChange(){
   backdrop-filter: blur(20px);
   border-left: 1px solid rgba(100, 200, 255, 0.3);
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
+  z-index: 10000;
   overflow-y: auto;
   scrollbar-width: thin;
 }
@@ -549,7 +561,7 @@ function onSizeChange(){
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
+  z-index: 9999;
   backdrop-filter: blur(4px);
 }
 
