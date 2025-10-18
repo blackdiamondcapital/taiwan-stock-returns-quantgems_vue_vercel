@@ -104,9 +104,7 @@ function onSizeChange(){
           <input v-model.number="state.cellSize" @input="onSizeChange" type="range" min="36" max="96" />
         </div>
         <button class="btn-primary" @click="emit('refresh')"><i class="fas fa-sync-alt"></i> 更新</button>
-        <button class="btn-primary" @click="showDetail({ symbol: 'TEST', name: '測試股票', return: 5.5 })" style="background: #f59e0b;">
-          <i class="fas fa-bug"></i> 測試面板
-        </button>
+        
       </div>
     </div>
 
