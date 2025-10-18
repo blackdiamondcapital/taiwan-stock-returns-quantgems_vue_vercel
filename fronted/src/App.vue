@@ -184,7 +184,12 @@ onMounted(async () => {
       volatility: parseFloat(item.volatility) || 0.5,
     }))
     // update heatmap rows for component
-    const rowsForHeatmap = currentData.value.map((r) => ({ symbol: r.symbol, name: r.name, return: r.return }))
+    const rowsForHeatmap = currentData.value.map((r) => ({ 
+      symbol: r.symbol, 
+      name: r.name, 
+      return: r.return,
+      volume: r.volume 
+    }))
     heatmapRows.value = rowsForHeatmap
     const sorted = [...currentData.value]
     sortData(sorted)
