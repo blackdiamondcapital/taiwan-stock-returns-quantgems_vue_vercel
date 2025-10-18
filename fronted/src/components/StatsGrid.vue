@@ -181,7 +181,6 @@ const handleDragEnd = () => {
                     <span class="muted">上漲：{{ formatNumber(s.advancersCount) }}</span>
                     <span class="muted">下跌：{{ formatNumber(s.declinersCount) }}</span>
                   </div>
-                  <div class="stat-footnote">市場廣度追蹤</div>
                 </div>
 
                 <!-- 今日下跌股票數 -->
@@ -195,7 +194,6 @@ const handleDragEnd = () => {
                     <span class="muted">下跌：{{ formatNumber(s.declinersCount ?? s.decliners ?? 0) }}</span>
                     <span class="muted">持平：{{ formatNumber(s.unchangedCount ?? s.unchanged ?? 0) }}</span>
                   </div>
-                  <div class="stat-footnote">市場壓力觀察</div>
                 </div>
 
                 <!-- 本月最佳報酬 -->
@@ -208,7 +206,6 @@ const handleDragEnd = () => {
                   <div class="stat-subinfo">
                     <span><span class="dot" style="background:#00d4ff"></span>報酬：{{ formatPercent(s.maxReturn, 2) }}</span>
                   </div>
-                  <div class="stat-footnote">鎖定強勢標的</div>
                 </div>
 
                 <!-- 市場平均報酬率 -->
@@ -222,7 +219,6 @@ const handleDragEnd = () => {
                     <span><span class="dot" style="background:#888"></span>市場樣本：{{ formatNumber(totalCount) }}</span>
                     <span class="muted">上漨：{{ formatNumber(s.advancersCount) }} 下跌：{{ formatNumber(s.declinersCount) }}</span>
                   </div>
-                  <div class="stat-footnote">全市場平均視角</div>
                 </div>
 
                 <!-- 突破新高股票 -->
@@ -236,7 +232,6 @@ const handleDragEnd = () => {
                     <span><span class="dot" style="background:#ff0080"></span>淨新高 {{ formatNumber(s.newHighNet) }}</span>
                     <span class="muted">新高：{{ formatNumber(s.newHighStocks) }} 新低：{{ formatNumber(s.newLowStocks) }}</span>
                   </div>
-                  <div class="stat-footnote">聚焦創高動能</div>
                 </div>
 
                 <!-- 站上 MA60 比例 -->
@@ -250,7 +245,6 @@ const handleDragEnd = () => {
                     <span class="muted">站上：{{ formatNumber(s.ma60AboveCount) }}</span>
                     <span class="muted">樣本：{{ formatNumber(s.ma60SampleCount) }}</span>
                   </div>
-                  <div class="stat-footnote">長期趨勢動能</div>
                 </div>
 
                 <!-- 站上 MA20 比例 -->
@@ -264,7 +258,6 @@ const handleDragEnd = () => {
                     <span><span class="dot" style="background:#22c55e"></span>站上：{{ formatNumber(s.ma20AboveCount) }}</span>
                     <span class="muted">樣本：{{ formatNumber(s.ma20SampleCount) }}</span>
                   </div>
-                  <div class="stat-footnote">短期均線參考</div>
                 </div>
 
                 <!-- 上漲家數 / 下跌家數 比 -->
@@ -278,7 +271,6 @@ const handleDragEnd = () => {
                     <span class="muted">上漲：{{ formatNumber(s.advancersCount) }}</span>
                     <span class="muted">下跌：{{ formatNumber(s.decliners) }}</span>
                   </div>
-                  <div class="stat-footnote">資金流向指標</div>
                 </div>
 
                 <!-- 成交量中位數 -->
@@ -292,7 +284,6 @@ const handleDragEnd = () => {
                     <span class="muted">單位：張</span>
                     <span class="muted">樣本：{{ formatNumber(totalCount) }}</span>
                   </div>
-                  <div class="stat-footnote">代表性成交量</div>
                 </div>
 
                 <!-- 上漲成交量 / 下跌成交量 比 -->
@@ -306,7 +297,6 @@ const handleDragEnd = () => {
                     <span class="muted">上漲量：{{ formatNumber(s.upVolume) }}</span>
                     <span class="muted">下跌量：{{ formatNumber(s.downVolume) }}</span>
                   </div>
-                  <div class="stat-footnote">多空量能對比</div>
                 </div>
 
                 <!-- 高波動警示比例 -->
@@ -320,7 +310,6 @@ const handleDragEnd = () => {
                     <span class="muted">波動≥0.8：{{ formatNumber(s.highVolatilityCount) }}</span>
                     <span class="muted">樣本：{{ formatNumber(totalCount) }}</span>
                   </div>
-                  <div class="stat-footnote">波動風險速覽</div>
                 </div>
               </div>
             </div>
@@ -688,15 +677,6 @@ const handleDragEnd = () => {
   position: relative;
 }
 
-.stat-footnote {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: rgba(241, 245, 249, 0.92);
-  margin-top: 6px;
-  letter-spacing: 0.02em;
-  border: none;
-  text-align: center;
-}
 
 /* === 響應式設計 (Mobile-First) === */
 
@@ -766,18 +746,45 @@ const handleDragEnd = () => {
   }
 
   .stat-card {
-    padding: 16px;
+    padding: 20px 18px !important;
+    min-height: auto !important;
+  }
+
+  .stat-header {
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .stat-label {
+    font-size: 1rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .stat-icon {
+    font-size: 1.4rem !important;
+    flex-shrink: 0 !important;
   }
 
   .stat-value {
-    font-size: 1.8rem;
+    font-size: 2rem !important;
+    margin: 16px 0 !important;
+    line-height: 1.2 !important;
   }
 
   .stat-subinfo {
-    flex-direction: column;
-    gap: 6px;
-    font-size: 0.85rem;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    font-size: 0.9rem !important;
+    margin-top: 12px !important;
   }
+
+  .stat-subinfo span {
+    display: block !important;
+    width: 100% !important;
+    line-height: 1.5 !important;
+  }
+
 
   .group-header-bar {
     padding: 12px 14px;
