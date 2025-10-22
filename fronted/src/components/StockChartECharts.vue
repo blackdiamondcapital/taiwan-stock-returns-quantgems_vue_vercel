@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, watch, onUnmounted, nextTick, computed } from 'vue'
 import * as echarts from 'echarts'
 import { fetchStockPriceHistory } from '../services/api'
 
@@ -12,6 +12,17 @@ const chartData = ref([])
 const loading = ref(false)
 const chartContainer = ref(null)
 let chartInstance = null
+
+// chart mode: 'standard' | 'heikin'
+const chartMode = ref('standard')
+
+// Control panel state
+const controlPanelOpen = ref(localStorage.getItem('chartControlPanelOpen') === 'true')
+
+function toggleControlPanel() {
+  controlPanelOpen.value = !controlPanelOpen.value
+  localStorage.setItem('chartControlPanelOpen', controlPanelOpen.value.toString())
+}
 
 const DEFAULT_PERIOD = '1D'
 const periodOptions = [
@@ -67,10 +78,30 @@ function renderChart() {
   
   // Prepare data for ECharts
   const dates = chartData.value.map(d => d.time)
-  const ohlc = chartData.value.map(d => [d.open, d.close, d.low, d.high])
+
+  // Build OHLC according to selected mode
+  const buildHeikinAshi = (rows) => {
+    const ha = []
+    for (let i = 0; i < rows.length; i++) {
+      const { open, high, low, close } = rows[i]
+      const haClose = (open + high + low + close) / 4
+      const prev = ha[i - 1]
+      const prevHaOpen = prev ? prev[0] : open
+      const prevHaClose = prev ? prev[1] : close
+      const haOpen = (prevHaOpen + prevHaClose) / 2
+      const haHigh = Math.max(high, haOpen, haClose)
+      const haLow = Math.min(low, haOpen, haClose)
+      // Keep order [open, close, low, high]
+      ha.push([Number(haOpen.toFixed(4)), Number(haClose.toFixed(4)), Number(haLow.toFixed(4)), Number(haHigh.toFixed(4))])
+    }
+    return ha
+  }
+
+  const standardOhlc = chartData.value.map(d => [d.open, d.close, d.low, d.high])
+  const ohlc = chartMode.value === 'heikin' ? buildHeikinAshi(chartData.value) : standardOhlc
   const volumes = chartData.value.map(d => d.volume)
   
-  // Calculate MA lines
+  // Calculate MA lines (based on close price index=1)
   function calculateMA(data, dayCount) {
     const result = []
     for (let i = 0; i < data.length; i++) {
@@ -95,7 +126,7 @@ function renderChart() {
     backgroundColor: 'transparent',
     animation: true,
     legend: {
-      data: ['K线', 'MA5', 'MA10', 'MA20'],
+      data: [chartMode.value === 'heikin' ? '神奇K線' : 'K线', 'MA5', 'MA10', 'MA20'],
       textStyle: {
         color: 'rgba(226, 232, 240, 0.8)',
         fontSize: 12
@@ -118,10 +149,11 @@ function renderChart() {
         let result = `${params[0].axisValue}<br/>`
         const candleData = params[0].data
         if (candleData) {
-          result += `開盤: ${candleData[1]}<br/>`
-          result += `收盤: ${candleData[2]}<br/>`
-          result += `最低: ${candleData[3]}<br/>`
-          result += `最高: ${candleData[4]}<br/>`
+          // data format: [open, close, low, high]
+          result += `開盤: ${candleData[0]}<br/>`
+          result += `收盤: ${candleData[1]}<br/>`
+          result += `最低: ${candleData[2]}<br/>`
+          result += `最高: ${candleData[3]}<br/>`
         }
         for (let i = 1; i < params.length - 1; i++) {
           if (params[i].value !== '-') {
@@ -141,14 +173,14 @@ function renderChart() {
       {
         left: '5%',
         right: '5%',
-        top: '15%',
-        height: '55%'
+        top: 60,
+        bottom: 150
       },
       {
         left: '5%',
         right: '5%',
-        top: '75%',
-        height: '15%'
+        height: 90,
+        bottom: 60
       }
     ],
     xAxis: [
@@ -161,7 +193,9 @@ function renderChart() {
         },
         axisLabel: {
           color: 'rgba(226, 232, 240, 0.6)',
-          fontSize: 11
+          fontSize: 11,
+          margin: 12,
+          hideOverlap: true
         },
         splitLine: { show: false },
         min: 'dataMin',
@@ -221,7 +255,8 @@ function renderChart() {
         show: true,
         xAxisIndex: [0, 1],
         type: 'slider',
-        bottom: '2%',
+        bottom: 18,
+        height: 24,
         start: 0,
         end: 100,
         backgroundColor: 'rgba(15, 23, 42, 0.5)',
@@ -237,7 +272,7 @@ function renderChart() {
     ],
     series: [
       {
-        name: 'K线',
+        name: chartMode.value === 'heikin' ? '神奇K線' : 'K线',
         type: 'candlestick',
         data: ohlc,
         itemStyle: {
@@ -350,6 +385,13 @@ onMounted(async () => {
       chartInstance.resize()
     }
   })
+  
+  // Handle Esc key to close panel
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && controlPanelOpen.value) {
+      toggleControlPanel()
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -366,18 +408,7 @@ onUnmounted(() => {
     <div class="chart-header">
       <div class="chart-title">
         <i class="fas fa-chart-candlestick"></i>
-        <span>{{ symbol }} K线图</span>
-      </div>
-      <div class="period-selector">
-        <button
-          v-for="option in periodOptions"
-          :key="option.key"
-          class="period-btn"
-          :class="{ active: selectedPeriodKey === option.key }"
-          @click="changePeriod(option.key)"
-        >
-          {{ option.label }}
-        </button>
+        <span>{{ symbol }} {{ chartMode === 'heikin' ? '神奇K線圖' : 'K線圖' }}</span>
       </div>
     </div>
     
@@ -392,16 +423,69 @@ onUnmounted(() => {
       <span>資料載入失敗或該股票無歷史數據</span>
     </div>
     
-    <div ref="chartContainer" class="chart-container" v-show="!loading && chartData.length > 0">
-      <!-- ECharts will render here -->
+    <div class="chart-wrapper" v-show="!loading && chartData.length > 0">
+      <div ref="chartContainer" class="chart-container">
+        <!-- ECharts will render here -->
+      </div>
+      
+      <!-- Floating Gear Button -->
+      <button class="gear-button" @click="toggleControlPanel" :class="{ active: controlPanelOpen }">
+        <i class="fas fa-cog" :class="{ 'fa-spin': controlPanelOpen }"></i>
+      </button>
+      
+      <!-- Floating Control Panel -->
+      <transition name="panel-fade">
+        <div v-show="controlPanelOpen" class="floating-panel" @click.stop>
+          <div class="panel-header">
+            <span class="panel-title">圖表控制</span>
+            <button class="panel-close" @click="toggleControlPanel">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          
+          <div class="panel-section">
+            <label class="section-label">K線模式</label>
+            <div class="mode-toggle-switch">
+              <button 
+                class="toggle-btn" 
+                :class="{ active: chartMode === 'standard' }" 
+                @click="chartMode = 'standard'; renderChart()"
+              >
+                <i class="fas fa-chart-bar"></i>
+                <span>原始K線</span>
+              </button>
+              <button 
+                class="toggle-btn" 
+                :class="{ active: chartMode === 'heikin' }" 
+                @click="chartMode = 'heikin'; renderChart()"
+              >
+                <i class="fas fa-magic"></i>
+                <span>神奇K線</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="panel-section">
+            <label class="section-label">資料頻率</label>
+            <div class="period-chips">
+              <button
+                v-for="option in periodOptions"
+                :key="option.key"
+                class="chip"
+                :class="{ active: selectedPeriodKey === option.key }"
+                @click="changePeriod(option.key)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+      
+      <!-- Backdrop for closing panel -->
+      <div v-if="controlPanelOpen" class="panel-backdrop" @click="toggleControlPanel"></div>
     </div>
     
-    <div v-if="!loading && chartData.length > 0" class="chart-info">
-      <div class="info-item">
-        <i class="fas fa-info-circle"></i>
-        <span>拖動圖表可縮放，滑鼠懸停查看詳情</span>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -433,34 +517,231 @@ onUnmounted(() => {
   color: rgba(100, 200, 255, 0.8);
 }
 
-.period-selector {
-  display: flex;
-  gap: 6px;
-}
-
-.period-btn {
-  padding: 6px 14px;
-  border: 1px solid rgba(100, 200, 255, 0.3);
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(226, 232, 240, 0.7);
-  font-size: 0.85rem;
-  font-weight: 500;
+/* Floating Gear Button */
+.gear-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(100, 200, 255, 0.4);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(16, 12, 48, 0.95));
+  color: rgba(100, 200, 255, 0.9);
   cursor: pointer;
-  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 20px rgba(100, 200, 255, 0.3);
+  z-index: 100 !important;
+  pointer-events: auto;
 }
 
-.period-btn:hover {
-  background: rgba(100, 200, 255, 0.1);
+.gear-button:hover {
+  background: linear-gradient(135deg, rgba(100, 200, 255, 0.15), rgba(100, 150, 255, 0.2));
   border-color: rgba(100, 200, 255, 0.5);
-  color: #fff;
+  color: rgba(100, 200, 255, 1);
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(100, 200, 255, 0.4);
 }
 
-.period-btn.active {
-  background: rgba(100, 200, 255, 0.2);
+.gear-button.active {
+  background: linear-gradient(135deg, rgba(100, 200, 255, 0.25), rgba(100, 150, 255, 0.3));
   border-color: rgba(100, 200, 255, 0.6);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(100, 200, 255, 0.25);
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+}
+
+.gear-button i.fa-spin {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Floating Control Panel */
+.floating-panel {
+  position: fixed;
+  top: 50%;
+  right: 30px;
+  transform: translateY(-50%);
+  width: 280px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(16, 12, 48, 0.98));
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(100, 200, 255, 0.3);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(100, 200, 255, 0.2);
+  z-index: 95;
+  padding: 16px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(100, 200, 255, 0.2);
+}
+
+.panel-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  background: transparent;
+  color: rgba(226, 232, 240, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.panel-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #f87171;
+}
+
+.panel-section {
+  margin-bottom: 20px;
+}
+
+.panel-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.7);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Mode Toggle Switch */
+.mode-toggle-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.toggle-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(100, 200, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  color: rgba(226, 232, 240, 0.7);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-btn i {
+  font-size: 1.2rem;
+}
+
+.toggle-btn span {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.toggle-btn:hover {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.4);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.toggle-btn.active {
+  background: linear-gradient(135deg, rgba(100, 200, 255, 0.25), rgba(100, 150, 255, 0.3));
+  border-color: rgba(100, 200, 255, 0.6);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(100, 200, 255, 0.4), inset 0 1px 3px rgba(255, 255, 255, 0.1);
+}
+
+/* Period Chips */
+.period-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.chip {
+  padding: 10px 8px;
+  border: 1px solid rgba(100, 200, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  color: rgba(226, 232, 240, 0.7);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+}
+
+.chip:hover {
+  background: rgba(100, 200, 255, 0.15);
+  border-color: rgba(100, 200, 255, 0.4);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.chip.active {
+  background: linear-gradient(135deg, rgba(100, 200, 255, 0.3), rgba(100, 150, 255, 0.35));
+  border-color: rgba(100, 200, 255, 0.6);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(100, 200, 255, 0.3);
+  font-weight: 600;
+}
+
+/* Panel Backdrop */
+.panel-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.15);
+  z-index: 90;
+  cursor: pointer;
+}
+
+/* Panel Fade Animation */
+.panel-fade-enter-active,
+.panel-fade-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.panel-fade-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+.panel-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
 }
 
 .chart-loading {
@@ -511,14 +792,19 @@ onUnmounted(() => {
   color: rgba(226, 232, 240, 0.5);
 }
 
+.chart-wrapper {
+  position: relative;
+  width: 100%;
+}
+
 .chart-container {
   width: 100% !important;
   height: 500px !important;
   min-height: 500px !important;
-  background: rgba(15, 23, 42, 0.3) !important;
-  border: 1px solid rgba(100, 200, 255, 0.2) !important;
-  border-radius: 12px !important;
-  padding: 10px !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
   display: block !important;
   visibility: visible !important;
   position: relative !important;
@@ -551,17 +837,32 @@ onUnmounted(() => {
     align-items: stretch;
   }
   
-  .period-selector {
-    justify-content: space-between;
-  }
-  
-  .period-btn {
-    flex: 1;
-  }
-  
   .chart-container {
-    height: 400px;
-    min-height: 400px;
+    height: 400px !important;
+    min-height: 400px !important;
+  }
+  
+  /* Adjust floating panel for mobile */
+  .floating-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 70vh;
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+  }
+  
+  .gear-button {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+  
+  .period-chips {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>
