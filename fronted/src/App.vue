@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref, reactive } from 'vue'
-import { fetchRankings, fetchStatistics } from './services/api'
+import { fetchRankings, fetchStatistics, API_BASE_URL } from './services/api'
 import { useAuth } from './stores/auth'
 import HeaderNav from './components/HeaderNav.vue'
 import StatsGrid from './components/StatsGrid.vue'
@@ -27,6 +27,7 @@ const currentView = ref('overview')
 const selectedDateRef = ref('')
 const periodRef = ref('daily')
 const filtersRef = reactive({ market: 'all', industry: 'all', returnRange: 'all', volumeThreshold: 0 })
+const rankingTypeRef = ref('all')
 
 // 認證狀態
 const { token, isAuthenticated, user, fetchCurrentUser, setToken } = useAuth()
@@ -133,6 +134,12 @@ onMounted(async () => {
   async function loadAndRender() {
     const period = getSelectedPeriod()
     const filters = getMainFilters()
+    
+    console.log('=== App.vue loadAndRender ===')
+    console.log('Period:', period)
+    console.log('Filters:', filters)
+    console.log('API Base URL:', API_BASE_URL)
+    
     setApiStatus('loading')
     const formatNumber = (value, digits = 0) => {
       if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
@@ -151,9 +158,15 @@ onMounted(async () => {
     }
 
     const [list, statsResp] = await Promise.all([
-      fetchRankings({ period, ...filters, limit: 200 }),
+      fetchRankings({ period, ...filters, limit: 200, rankingType: rankingTypeRef.value }),
       fetchStatistics({ period, market: filters.market, date: filters.date })
     ])
+    
+    console.log('API Response - list length:', list.length)
+    console.log('API Response - statsResp:', statsResp)
+    if (list.length > 0) {
+      console.log('Sample API data:', list.slice(0, 3))
+    }
     if (
       period === 'daily'
       && allowDailyAutoFallback
@@ -167,22 +180,58 @@ onMounted(async () => {
       return
     }
     hasAttemptedAutoPeriodFallback = false
-    // map to currentData shape
-    currentData.value = list.map((item, idx) => ({
-      rank: idx + 1,
-      symbol: item.symbol,
-      name: item.name || item.symbol,
-      short_name: item.short_name || item.name || '',
-      return: Number(item.return_rate) || 0,
-      price: Number(item.current_price) || 0,
-      priorClose: Number(item.prior_close) || 0,
-      change: Number(item.price_change) || 0,
-      volume: Number(item.volume) || 0,
-      cumulative: Number(item.cumulative_return ?? item.return_rate) || 0,
-      market: item.market || 'all',
-      industry: item.industry || 'all',
-      volatility: parseFloat(item.volatility) || 0.5,
-    }))
+    // helper: loose number parser (supports strings like "-2.3%", "1,234", "(1.2)")
+    function toNumberLoose(v) {
+      if (v === null || v === undefined) return null
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null
+      if (typeof v === 'string') {
+        let s = v.trim()
+        // handle parentheses as negatives e.g. (1.23)
+        let negative = false
+        if (s.startsWith('(') && s.endsWith(')')) {
+          negative = true
+          s = s.slice(1, -1)
+        }
+        // remove percent sign, full-width percent, commas, spaces
+        s = s.replace(/[％%\s,]/g, '')
+        const n = parseFloat(s)
+        if (!Number.isNaN(n)) return negative ? -n : n
+        return null
+      }
+      return null
+    }
+
+    // map to currentData shape with robust parsing & fallbacks
+    currentData.value = list.map((item, idx) => {
+      const retParsed = toNumberLoose(item.return_rate)
+      const price = toNumberLoose(item.current_price) ?? 0
+      const prior = toNumberLoose(item.prior_close) ?? 0
+      const change = toNumberLoose(item.price_change) ?? 0
+      // prefer backend return_rate; if missing or zero-like, estimate from price change
+      let ret = retParsed
+      if (!Number.isFinite(ret) || ret === 0) {
+        if (Number.isFinite(change) && Number.isFinite(prior) && prior !== 0) {
+          ret = (change / prior) * 100
+        }
+      }
+      const cum = toNumberLoose(item.cumulative_return ?? item.return_rate)
+
+      return {
+        rank: idx + 1,
+        symbol: item.symbol,
+        name: item.name || item.symbol,
+        short_name: item.short_name || item.name || '',
+        return: Number.isFinite(ret) ? ret : 0,
+        price,
+        priorClose: prior,
+        change,
+        volume: toNumberLoose(item.volume) ?? 0,
+        cumulative: Number.isFinite(cum) ? cum : (Number.isFinite(ret) ? ret : 0),
+        market: item.market || 'all',
+        industry: item.industry || 'all',
+        volatility: toNumberLoose(item.volatility) ?? 0.5,
+      }
+    })
     // update heatmap rows for component
     const rowsForHeatmap = currentData.value.map((r) => ({ 
       symbol: r.symbol, 
@@ -241,6 +290,7 @@ function onUpdatePeriod(p){
   loadAndRender()
 }
   function onUpdateFilters(f){ Object.assign(filtersRef, f); loadAndRender() }
+  function onUpdateRankingType(type) { rankingTypeRef.value = type; loadAndRender() }
 </script>
 
 <template>
@@ -287,6 +337,7 @@ function onUpdatePeriod(p){
           @change-sort="onChangeSort"
           @update:period="onUpdatePeriod"
           @update:filters="onUpdateFilters"
+          @update:rankingType="onUpdateRankingType"
         />
       </div>
 
