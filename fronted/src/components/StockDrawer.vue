@@ -482,6 +482,9 @@ function formatTime(timestamp) {
   flex: 1;
   overflow-y: auto;
   padding: 24px 28px;
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
 }
 
 .content-section {

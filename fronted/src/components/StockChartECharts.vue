@@ -462,25 +462,25 @@ function renderChart() {
     grid: [
       {
         left: '5%',
-        right: '5%',
-        top: 60,
-        height: showKD.value || showMACD.value ? '35%' : '60%'
+        right: '8%',
+        top: 40,
+        height: showKD.value || showMACD.value ? '38%' : '63%'
       },
       {
         left: '5%',
-        right: '5%',
+        right: '8%',
         height: showKD.value || showMACD.value ? 60 : 90,
         top: showKD.value || showMACD.value ? '48%' : '70%'
       },
       ...(showKD.value ? [{
         left: '5%',
-        right: '5%',
+        right: '8%',
         height: showMACD.value ? 80 : 120,
         top: showMACD.value ? '60%' : '65%'
       }] : []),
       ...(showMACD.value ? [{
         left: '5%',
-        right: '5%',
+        right: '8%',
         height: showKD.value ? 80 : 120,
         top: showKD.value ? '82%' : '65%'
       }] : [])
@@ -916,12 +916,13 @@ onUnmounted(() => {
 <template>
   <div class="stock-chart">
     <div class="chart-header">
+      <!-- 標題列 -->
       <div class="chart-title">
         <i class="fas fa-chart-candlestick"></i>
         <span>{{ symbol }} {{ chartMode === 'heikin' ? '神奇K線圖' : 'K線圖' }}</span>
       </div>
       
-      <!-- Data Frequency Controls -->
+      <!-- 時間週期控制區 -->
       <div class="frequency-controls">
         <div class="period-chips">
           <button
@@ -937,7 +938,7 @@ onUnmounted(() => {
         
         <!-- Fullscreen Button -->
         <button 
-          class="fullscreen-btn" 
+          class="action-icon-btn" 
           @click="toggleFullscreen"
           :title="isFullscreen ? '退出全螢幕' : '全螢幕'"
         >
@@ -947,7 +948,7 @@ onUnmounted(() => {
         <!-- Chart Control Button -->
         <button 
           v-show="!controlPanelOpen" 
-          class="chart-control-btn" 
+          class="action-icon-btn" 
           @click="toggleControlPanel"
           title="圖表控制"
         >
@@ -1200,7 +1201,7 @@ onUnmounted(() => {
 .stock-chart {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   /* Remove any outer frame/glow on the container */
   background: transparent !important;
   border: none !important;
@@ -1229,39 +1230,75 @@ onUnmounted(() => {
   color: rgba(100, 200, 255, 0.8);
 }
 
+/* 標題列 */
+.header-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-icon-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(100, 200, 255, 0.1);
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  border-radius: 10px;
+  color: rgba(226, 232, 240, 0.8);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1rem;
+}
+
+.action-icon-btn:hover {
+  background: rgba(100, 200, 255, 0.2);
+  border-color: rgba(100, 200, 255, 0.4);
+  color: #64c8ff;
+  transform: translateY(-2px);
+}
+
+.action-icon-btn:active {
+  transform: translateY(0);
+}
+
 .chart-header {
-  position: sticky;
-  top: 0;
-  z-index: 9999;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  background: rgba(15, 23, 42, 1);
-  backdrop-filter: blur(10px);
-  padding: 12px 16px;
-  margin: -16px -16px 8px -16px;
-  border-bottom: 1px solid rgba(100, 200, 255, 0.2);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-  /* 方案五：硬件加速層級分離 */
-  transform: translateZ(0);
-  will-change: transform;
-  backface-visibility: hidden;
-  perspective: 1000px;
+  gap: 12px;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  border-bottom: none;
+  box-shadow: none;
 }
 
 /* Frequency Controls */
 .frequency-controls {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
+  background: transparent;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(100, 200, 255, 0.1);
 }
 
 .frequency-controls .period-chips {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .frequency-controls .chip {
@@ -1921,13 +1958,21 @@ onUnmounted(() => {
   border-radius: 0 !important;
   padding: 0 !important;
   display: block !important;
+  isolation: isolate !important;
   visibility: visible !important;
+}
+
+/* 確保 ECharts canvas 在工具列下方 */
+.chart-container canvas {
+  position: relative !important;
+  z-index: 1 !important;
 }
 
 /* Fix sticky header z-index over chart */
 .chart-wrapper {
   position: relative;
   z-index: 1;
+  isolation: isolate;
   /* Remove any outer frame/glow */
   background: transparent !important;
   border: none !important;

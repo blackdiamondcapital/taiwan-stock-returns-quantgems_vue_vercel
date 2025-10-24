@@ -19,21 +19,35 @@ const drawerMode = ref('detail')
 const selectedStock = ref(null)
 const watchlistPanelVisible = ref(false)
 
+// 滾動相關
+const showScrollTop = ref(false)
+const showQuickNav = ref(false)
+const quickNavExpanded = ref(true) // 快速跳轉展開狀態
+const rankingContainer = ref(null)
+
+// 視圖模式
+const viewMode = ref('list') // 'waterfall', 'list', 'table'
+const viewModeOptions = [
+  { value: 'list', label: '列表', icon: 'fa-list' },
+  { value: 'table', label: '表格', icon: 'fa-table' },
+  { value: 'waterfall', label: '瀑布流', icon: 'fa-grip' },
+]
+
 // 方案五：分組篩選
 const selectedGroup = ref('all')
 const rankingType = ref('gainers') // 'gainers' 或 'losers'
 
 const groupOptions = [
   { value: 'all', label: '全部', color: '#64c8ff' },
-  { value: 'hot', label: '強勢股 >10%', color: '#22c55e', min: 10 },
-  { value: 'rising', label: '上漲 5-10%', color: '#10b981', min: 5, max: 10 },
+  { value: 'hot', label: '強勢股 >10%', color: '#ef4444', min: 10 },
+  { value: 'rising', label: '上漲 5-10%', color: '#f87171', min: 5, max: 10 },
   { value: 'stable', label: '平穩 0-5%', color: '#f59e0b', min: 0, max: 5 },
-  { value: 'falling', label: '下跌 <0%', color: '#ef4444', max: 0 },
+  { value: 'falling', label: '下跌 <0%', color: '#22c55e', max: 0 },
 ]
 
 const rankingTypeOptions = [
-  { value: 'gainers', label: '漲幅排行', icon: 'fa-arrow-trend-up', color: '#22c55e' },
-  { value: 'losers', label: '跌幅排行', icon: 'fa-arrow-trend-down', color: '#ef4444' },
+  { value: 'gainers', label: '漲幅排行', icon: 'fa-arrow-trend-up', color: '#ef4444' },
+  { value: 'losers', label: '跌幅排行', icon: 'fa-arrow-trend-down', color: '#22c55e' },
 ]
 
 const periodOptions = [
@@ -270,7 +284,7 @@ const groupedRows = computed(() => {
       all: { 
         items: filteredRows, 
         label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
-        color: rankingType.value === 'gainers' ? '#22c55e' : '#ef4444'
+        color: rankingType.value === 'gainers' ? '#ef4444' : '#22c55e'
       }
     }
   }
@@ -309,7 +323,7 @@ const groupedRows = computed(() => {
       all: { 
         items: filteredRows, 
         label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
-        color: rankingType.value === 'gainers' ? '#22c55e' : '#ef4444'
+        color: rankingType.value === 'gainers' ? '#ef4444' : '#22c55e'
       }
     }
   }
@@ -352,13 +366,56 @@ function handleClickOutside(event) {
   }
 }
 
+// 滾動處理
+function handleScroll() {
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+  showScrollTop.value = scrollTop > 300
+  showQuickNav.value = scrollTop > 200
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function scrollToRank(rank) {
+  // 根據當前視圖模式選擇不同的選擇器
+  let selector = ''
+  if (viewMode.value === 'waterfall') {
+    selector = '.ranking-card'
+  } else if (viewMode.value === 'list') {
+    selector = '.list-item'
+  } else if (viewMode.value === 'table') {
+    selector = '.table-row'
+  }
+  
+  const items = document.querySelectorAll(selector)
+  if (items[rank - 1]) {
+    items[rank - 1].scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+// 快速跳轉選項
+const quickNavOptions = computed(() => {
+  const total = props.rows.length
+  const options = [
+    { label: 'Top 10', rank: 1, show: total >= 10 },
+    { label: '11-30', rank: 11, show: total >= 11 },
+    { label: '31-50', rank: 31, show: total >= 31 },
+    { label: '51-100', rank: 51, show: total >= 51 },
+    { label: '100+', rank: 101, show: total >= 101 },
+  ]
+  return options.filter(opt => opt.show)
+})
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('scroll', handleScroll)
   loadWatchlist()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('scroll', handleScroll)
 })
 </script>
 
@@ -386,6 +443,20 @@ onUnmounted(() => {
               >
                 <i class="fas" :class="option.icon"></i>
                 <span>{{ option.label }}</span>
+              </button>
+            </div>
+
+            <!-- 視圖模式切換 -->
+            <div class="view-mode-switch">
+              <button
+                v-for="option in viewModeOptions"
+                :key="option.value"
+                class="view-mode-btn"
+                :class="{ active: viewMode === option.value }"
+                @click="viewMode = option.value"
+                :title="option.label"
+              >
+                <i class="fas" :class="option.icon"></i>
               </button>
             </div>
             
@@ -491,7 +562,7 @@ onUnmounted(() => {
             </div>
 
             <!-- 瀑布流卡片 -->
-            <div class="waterfall-grid">
+            <div v-if="viewMode === 'waterfall'" class="waterfall-grid">
               <article
                 v-for="(item, index) in group.items"
                 :key="item.symbol + '-' + item.rank"
@@ -577,6 +648,109 @@ onUnmounted(() => {
                 </div>
               </article>
             </div>
+
+            <!-- 列表視圖 -->
+            <div v-if="viewMode === 'list'" class="list-view">
+              <div
+                v-for="item in group.items"
+                :key="item.symbol + '-list'"
+                class="list-item"
+                :class="[getGroupClass(item.return), item.rank <= 3 ? 'top-rank' : '']"
+              >
+                <div class="list-rank">#{{ item.rank }}</div>
+                <div class="list-content">
+                  <div class="list-main">
+                    <div class="list-stock">
+                      <span class="list-symbol">{{ item.symbol }}</span>
+                      <span class="list-name">{{ item.short_name || item.name }}</span>
+                    </div>
+                    <div class="list-return" :class="item.return >= 0 ? 'positive' : 'negative'">
+                      <i class="fas" :class="item.return >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
+                      {{ Math.abs(item.return).toFixed(2) }}%
+                    </div>
+                  </div>
+                  <div class="list-stats">
+                    <span class="list-stat">
+                      <i class="fas fa-dollar-sign"></i>
+                      {{ item.price.toFixed(2) }}
+                    </span>
+                    <span class="list-stat">
+                      <i class="fas fa-chart-line"></i>
+                      {{ item.change >= 0 ? '+' : '' }}{{ item.change.toFixed(2) }}
+                    </span>
+                    <span class="list-stat">
+                      <i class="fas fa-chart-bar"></i>
+                      {{ (Number(item.volume||0)/1000).toFixed(0) }}K
+                    </span>
+                  </div>
+                </div>
+                <div class="list-actions">
+                  <button class="list-action-btn" @click="handleAction('detail', item, $event)" title="詳情">
+                    <i class="fas fa-info-circle"></i>
+                  </button>
+                  <button 
+                    class="list-action-btn"
+                    :class="{ active: isInWatchlist(item.symbol) }"
+                    @click="toggleWatchlist(item.symbol)"
+                    title="加入自選"
+                  >
+                    <i class="fas fa-star"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 表格視圖 -->
+            <div v-if="viewMode === 'table'" class="table-view">
+              <table class="ranking-table">
+                <thead>
+                  <tr>
+                    <th>排名</th>
+                    <th>股票代號</th>
+                    <th>股票名稱</th>
+                    <th>報酬率</th>
+                    <th>價格</th>
+                    <th>漲跌</th>
+                    <th>成交量</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in group.items"
+                    :key="item.symbol + '-table'"
+                    class="table-row"
+                    :class="[getGroupClass(item.return), item.rank <= 3 ? 'top-rank' : '']"
+                  >
+                    <td class="table-rank">#{{ item.rank }}</td>
+                    <td class="table-symbol">{{ item.symbol }}</td>
+                    <td class="table-name">{{ item.short_name || item.name }}</td>
+                    <td class="table-return" :class="item.return >= 0 ? 'positive' : 'negative'">
+                      <i class="fas" :class="item.return >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
+                      {{ Math.abs(item.return).toFixed(2) }}%
+                    </td>
+                    <td class="table-price">{{ item.price.toFixed(2) }}</td>
+                    <td class="table-change" :class="item.change >= 0 ? 'positive' : 'negative'">
+                      {{ item.change >= 0 ? '+' : '' }}{{ item.change.toFixed(2) }}
+                    </td>
+                    <td class="table-volume">{{ (Number(item.volume||0)/1000).toFixed(0) }}K</td>
+                    <td class="table-actions">
+                      <button class="table-action-btn" @click="handleAction('detail', item, $event)" title="詳情">
+                        <i class="fas fa-chart-line"></i>
+                      </button>
+                      <button 
+                        class="table-action-btn"
+                        :class="{ active: isInWatchlist(item.symbol) }"
+                        @click="toggleWatchlist(item.symbol)"
+                        title="自選"
+                      >
+                        <i class="fas fa-star"></i>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -593,5 +767,43 @@ onUnmounted(() => {
       v-model:visible="watchlistPanelVisible"
       @select-stock="handleWatchlistSelect"
     />
+
+    <!-- 回到頂部按鈕 -->
+    <transition name="fade-slide">
+      <button
+        v-if="showScrollTop"
+        class="scroll-to-top"
+        @click="scrollToTop"
+        title="回到頂部"
+      >
+        <i class="fas fa-arrow-up"></i>
+      </button>
+    </transition>
+
+    <!-- 快速跳轉導航 -->
+    <transition name="slide-right">
+      <div v-if="showQuickNav && quickNavOptions.length > 0" class="quick-nav" :class="{ collapsed: !quickNavExpanded }">
+        <div class="quick-nav-header">
+          <div class="quick-nav-title">
+            <i class="fas fa-bolt"></i>
+            <span v-if="quickNavExpanded">快速跳轉</span>
+          </div>
+          <button class="quick-nav-toggle" @click="quickNavExpanded = !quickNavExpanded" :title="quickNavExpanded ? '收合' : '展開'">
+            <i class="fas" :class="quickNavExpanded ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
+          </button>
+        </div>
+        <div v-if="quickNavExpanded" class="quick-nav-content">
+          <button
+            v-for="option in quickNavOptions"
+            :key="option.rank"
+            class="quick-nav-btn"
+            @click="scrollToRank(option.rank)"
+            :title="`跳轉到第 ${option.rank} 名`"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+    </transition>
   </section>
 </template>
