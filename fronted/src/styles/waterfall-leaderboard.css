@@ -1,0 +1,888 @@
+/* ========================================
+   分組瀑布流排行榜 - Waterfall Style Leaderboard
+   ======================================== */
+
+/* 整體容器 */
+.ranking-section.waterfall-style {
+  position: relative;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(25, 35, 60, 0.98));
+}
+
+/* 標題區域 */
+.waterfall-header {
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.95) 0%,
+    rgba(15, 23, 42, 0.95) 100%);
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+.waterfall-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.waterfall-title i {
+  font-size: 1.75rem;
+  color: #64c8ff;
+  filter: drop-shadow(0 0 8px rgba(100, 200, 255, 0.6));
+}
+
+.title-subtitle {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.6);
+  font-weight: 500;
+  margin-left: 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid rgba(100, 200, 255, 0.3);
+}
+
+/* Waterfall 按鈕 */
+.waterfall-btn {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.waterfall-btn:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(99, 102, 241, 0.3));
+  border-color: rgba(59, 130, 246, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.waterfall-btn .badge {
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* 漲跌幅切換按鈕 */
+.ranking-type-switch {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(100, 200, 255, 0.2);
+}
+
+.type-switch-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 2px solid rgba(100, 200, 255, 0.2);
+  border-radius: 10px;
+  color: rgba(226, 232, 240, 0.8);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.type-switch-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent);
+  transition: left 0.5s ease;
+}
+
+.type-switch-btn:hover::before {
+  left: 100%;
+}
+
+.type-switch-btn:hover {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: var(--type-color, #64c8ff);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.type-switch-btn.active {
+  background: linear-gradient(135deg, 
+    rgba(var(--type-color-rgb, 100, 200, 255), 0.25),
+    rgba(var(--type-color-rgb, 100, 200, 255), 0.15));
+  border-color: var(--type-color, #64c8ff);
+  color: #fff;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 20px var(--type-color, #64c8ff);
+}
+
+.type-switch-btn.active i {
+  animation: icon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.type-switch-btn i {
+  font-size: 1.1rem;
+  transition: transform 0.3s ease;
+}
+
+/* Waterfall Tabs */
+.waterfall-tabs {
+  display: flex;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 0.5rem;
+  border-radius: 10px;
+  border: 1px solid rgba(100, 200, 255, 0.15);
+}
+
+.waterfall-tab {
+  position: relative;
+  padding: 0.65rem 1.25rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(226, 232, 240, 0.7);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 8px;
+}
+
+.waterfall-tab:hover {
+  color: #fff;
+  background: rgba(100, 200, 255, 0.08);
+  border-color: rgba(100, 200, 255, 0.2);
+}
+
+.waterfall-tab.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(99, 102, 241, 0.3));
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* 分組篩選標籤雲 */
+.group-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(100, 200, 255, 0.15);
+  margin-top: 1rem;
+}
+
+.filter-tags {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.filter-tag {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 2px solid rgba(100, 200, 255, 0.2);
+  border-radius: 20px;
+  color: rgba(226, 232, 240, 0.8);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.filter-tag::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--tag-color, #64c8ff);
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.filter-tag:hover {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: var(--tag-color, #64c8ff);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.filter-tag:hover::before {
+  opacity: 1;
+}
+
+.filter-tag.active {
+  background: linear-gradient(135deg, 
+    rgba(var(--tag-color-rgb, 100, 200, 255), 0.2),
+    rgba(var(--tag-color-rgb, 100, 200, 255), 0.1));
+  border-color: var(--tag-color, #64c8ff);
+  color: #fff;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 20px var(--tag-color, #64c8ff);
+}
+
+.filter-tag.active::before {
+  opacity: 1;
+  width: 100%;
+  background: linear-gradient(90deg, 
+    var(--tag-color, #64c8ff),
+    transparent);
+}
+
+.tag-label {
+  position: relative;
+  z-index: 2;
+}
+
+.tag-count {
+  position: relative;
+  z-index: 2;
+  padding: 0.15rem 0.5rem;
+  background: rgba(100, 200, 255, 0.2);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.filter-tag.active .tag-count {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 市場篩選 */
+.market-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.market-filter .filter-label {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.7);
+  font-weight: 600;
+}
+
+.waterfall-select {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(100, 200, 255, 0.25);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.waterfall-select:hover,
+.waterfall-select:focus {
+  border-color: rgba(100, 200, 255, 0.5);
+  box-shadow: 0 0 12px rgba(100, 200, 255, 0.2);
+  outline: none;
+}
+
+/* 瀑布流容器 */
+.waterfall-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* 空狀態 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.6) 0%,
+    rgba(15, 23, 42, 0.6) 100%);
+  border: 2px dashed rgba(100, 200, 255, 0.3);
+  border-radius: 16px;
+  min-height: 400px;
+  animation: empty-fade-in 0.5s ease-out;
+}
+
+@keyframes empty-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.empty-state i {
+  font-size: 4rem;
+  color: rgba(100, 200, 255, 0.4);
+  margin-bottom: 1.5rem;
+  animation: icon-float 3s ease-in-out infinite;
+}
+
+@keyframes icon-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.empty-state h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+
+.empty-state p {
+  font-size: 1rem;
+  color: rgba(226, 232, 240, 0.7);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+.switch-type-btn {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(99, 102, 241, 0.3));
+  border: 2px solid rgba(59, 130, 246, 0.5);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.switch-type-btn:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(99, 102, 241, 0.4));
+  border-color: rgba(59, 130, 246, 0.7);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+/* 分組區域 */
+.group-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, 
+    rgba(var(--group-color-rgb, 100, 200, 255), 0.15),
+    rgba(var(--group-color-rgb, 100, 200, 255), 0.05));
+  border-left: 4px solid var(--group-color, #64c8ff);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.group-title i {
+  color: var(--group-color, #64c8ff);
+  filter: drop-shadow(0 0 6px var(--group-color, #64c8ff));
+}
+
+.group-count {
+  padding: 0.5rem 1rem;
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--group-color, #64c8ff);
+}
+
+/* 瀑布流網格 */
+.waterfall-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+  animation: grid-fade-in 0.5s ease-out;
+}
+
+@keyframes grid-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 瀑布流卡片 */
+.waterfall-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.7) 0%,
+    rgba(15, 23, 42, 0.7) 100%);
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: card-pop-in 0.4s ease-out backwards;
+  animation-delay: calc(var(--card-index) * 0.05s);
+}
+
+@keyframes card-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.waterfall-card:hover {
+  transform: translateY(-6px) scale(1.02);
+  border-color: rgba(100, 200, 255, 0.4);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 30px rgba(100, 200, 255, 0.2);
+}
+
+/* 分組顏色邊框 */
+.waterfall-card.group-hot {
+  border-left: 4px solid #22c55e;
+}
+
+.waterfall-card.group-rising {
+  border-left: 4px solid #10b981;
+}
+
+.waterfall-card.group-stable {
+  border-left: 4px solid #f59e0b;
+}
+
+.waterfall-card.group-falling {
+  border-left: 4px solid #ef4444;
+}
+
+/* 前三名特殊標記 */
+.waterfall-card.top-rank {
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 0 20px rgba(255, 215, 0, 0.2);
+}
+
+.waterfall-card.top-rank::after {
+  content: '★';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 1.5rem;
+  color: #ffd700;
+  filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.8));
+  animation: star-twinkle 2s ease-in-out infinite;
+}
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* 卡片頭部 */
+.waterfall-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-bottom: 1px solid rgba(100, 200, 255, 0.1);
+}
+
+.rank-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rank-number {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: rgba(226, 232, 240, 0.9);
+  font-family: 'Inter', 'Roboto', sans-serif;
+}
+
+.rank-change-mini {
+  display: flex;
+  align-items: center;
+  padding: 0.15rem 0.4rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.rank-change-mini.up {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.rank-change-mini.down {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.watchlist-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(226, 232, 240, 0.6);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.watchlist-icon:hover {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.4);
+  color: #64c8ff;
+}
+
+.watchlist-icon.active {
+  background: rgba(255, 215, 0, 0.15);
+  border-color: rgba(255, 215, 0, 0.5);
+  color: #ffd700;
+}
+
+/* 卡片主體 */
+.card-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+}
+
+.stock-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stock-symbol {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #fff;
+  font-family: 'Inter', 'Roboto', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.stock-name {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.7);
+  font-weight: 500;
+}
+
+/* 主要數據 */
+.main-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(100, 200, 255, 0.15);
+}
+
+.main-stat .stat-label {
+  font-size: 0.75rem;
+  color: rgba(226, 232, 240, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.main-stat .stat-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  font-family: 'Inter', 'Roboto', monospace;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.main-stat .stat-value.positive {
+  color: #22c55e;
+}
+
+.main-stat .stat-value.negative {
+  color: #ef4444;
+}
+
+.main-stat .stat-value i {
+  font-size: 1.25rem;
+}
+
+/* 次要數據 */
+.secondary-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(100, 200, 255, 0.1);
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-row .label {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.6);
+  font-weight: 500;
+}
+
+.stat-row .value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  font-family: 'Inter', 'Roboto', monospace;
+}
+
+.stat-row .value.positive {
+  color: #22c55e;
+}
+
+.stat-row .value.negative {
+  color: #ef4444;
+}
+
+/* 卡片底部 */
+.card-footer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-top: 1px solid rgba(100, 200, 255, 0.1);
+}
+
+.action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+}
+
+.action-btn i {
+  font-size: 0.9rem;
+}
+
+/* ========================================
+   RWD 響應式設計 - Waterfall Style
+   ======================================== */
+
+/* 大螢幕 (> 1400px) */
+@media (min-width: 1400px) {
+  .waterfall-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+/* 平板 (< 1024px) */
+@media (max-width: 1023px) {
+  .waterfall-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+  }
+
+  .group-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-tags {
+    justify-content: center;
+  }
+
+  .market-filter {
+    justify-content: center;
+  }
+}
+
+/* 手機 (< 640px) */
+@media (max-width: 639px) {
+  .waterfall-header {
+    padding: 1rem;
+  }
+
+  .ranking-header-top {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .waterfall-title {
+    font-size: 1.25rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .ranking-type-switch {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .type-switch-btn {
+    flex: 1;
+    padding: 0.65rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .type-switch-btn span {
+    display: none;
+  }
+
+  .type-switch-btn i {
+    font-size: 1.25rem;
+  }
+
+  .title-subtitle {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+    padding-top: 0.25rem;
+    border-top: 1px solid rgba(100, 200, 255, 0.3);
+  }
+
+  .waterfall-tabs {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .waterfall-tab {
+    flex: 1;
+    min-width: calc(33.333% - 0.5rem);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .filter-tags {
+    gap: 0.5rem;
+  }
+
+  .filter-tag {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .waterfall-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .waterfall-card {
+    max-width: 100%;
+  }
+
+  .stock-symbol {
+    font-size: 1.15rem;
+  }
+
+  .main-stat .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .group-header {
+    padding: 0.75rem 1rem;
+  }
+
+  .group-title {
+    font-size: 1.1rem;
+  }
+}
+
+/* 超小螢幕 (< 400px) */
+@media (max-width: 399px) {
+  .waterfall-tab {
+    min-width: calc(50% - 0.5rem);
+  }
+
+  .filter-tag {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .tag-count {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+  }
+}
