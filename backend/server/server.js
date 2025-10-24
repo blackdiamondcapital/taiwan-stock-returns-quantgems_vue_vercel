@@ -583,7 +583,7 @@ app.get('/api/returns/statistics', async (req, res) => {
 
 // Rankings endpoint expected by front-end
 app.get('/api/returns/rankings', async (req, res) => {
-  const { period = 'daily', market = 'all', industry = 'all', returnRange = 'all', volumeThreshold = 0, date, limit = 50 } = req.query;
+  const { period = 'daily', market = 'all', industry = 'all', returnRange = 'all', volumeThreshold = 0, date, limit = 50, rankingType = 'all' } = req.query;
   const periodKey = String(period || 'daily').toLowerCase();
   const periodWindowDays = {
     daily: 1,
@@ -606,6 +606,19 @@ app.get('/api/returns/rankings', async (req, res) => {
     }
 
     const isoDate = toIsoDate(targetDate) || targetDate;
+    
+    // 根據 rankingType 決定 WHERE 和 ORDER BY 條件
+    let whereClause = 'WHERE latest_return_pct IS NOT NULL';
+    let orderClause = 'ORDER BY latest_return_pct DESC NULLS LAST';
+    
+    if (rankingType === 'gainers') {
+      whereClause += ' AND latest_return_pct >= 0';
+      orderClause = 'ORDER BY latest_return_pct DESC NULLS LAST';
+    } else if (rankingType === 'losers') {
+      whereClause += ' AND latest_return_pct < 0';
+      orderClause = 'ORDER BY latest_return_pct ASC NULLS LAST';
+    }
+    
     const sql = `
       WITH base AS (
         SELECT
@@ -673,50 +686,54 @@ app.get('/api/returns/rankings', async (req, res) => {
             )
           ORDER BY sp.symbol, sp.date DESC
         ) sp
-      )
-      SELECT
-        a.symbol,
-        $1::date AS latest_date,
-        CASE
-          WHEN $3 = 1 AND a.latest_daily_return IS NOT NULL THEN a.latest_daily_return
-          WHEN a.has_prior_close THEN (a.latest_close / a.prior_close) - 1
-          WHEN a.window_count = $3 AND a.all_positive_returns THEN EXP(a.log_return_sum) - 1
-          WHEN pp.price_before_window IS NOT NULL AND pp.price_before_window > 0 THEN (a.latest_close / pp.price_before_window) - 1
-          ELSE NULL
-        END AS latest_return_pct,
-        COALESCE(sp.volume, a.latest_volume, 0) AS volume,
-        COALESCE(sp.close_price, a.latest_close, 0) AS current_price,
-        COALESCE(
+      ),
+      final_data AS (
+        SELECT
+          a.symbol,
+          $1::date AS latest_date,
           CASE
-            WHEN a.has_prior_close THEN a.prior_close
-            WHEN a.window_count = $3 AND a.all_positive_returns THEN a.latest_close / NULLIF(EXP(a.log_return_sum), 0)
-            ELSE pp.price_before_window
-          END,
-          prev.close_price,
-          0
-        ) AS prior_close,
-        CASE
-          WHEN a.has_prior_close THEN a.latest_close - a.prior_close
-          WHEN a.window_count = $3 AND a.all_positive_returns THEN a.latest_close - (a.latest_close / NULLIF(EXP(a.log_return_sum), 0))
-          WHEN pp.price_before_window IS NOT NULL AND pp.price_before_window > 0 THEN a.latest_close - pp.price_before_window
-          ELSE COALESCE(sp.change, 0)
-        END AS price_change,
-        CASE
-          WHEN a.has_prior_close AND a.prior_close <> 0 THEN (a.latest_close / a.prior_close) - 1
-          WHEN a.window_count = $3 AND a.all_positive_returns THEN EXP(a.log_return_sum) - 1
-          WHEN pp.price_before_window IS NOT NULL AND pp.price_before_window > 0 THEN (a.latest_close / pp.price_before_window) - 1
-          ELSE COALESCE(sp.change_percent, 0) / 100
-        END AS change_percent,
-        s.name AS full_name,
-        s.short_name,
-        s.market,
-        s.industry
-      FROM aggregated a
-      LEFT JOIN prior_price pp ON pp.symbol = a.symbol
-      LEFT JOIN stock_prices sp ON sp.symbol = a.symbol AND sp.date = $1::date
-      LEFT JOIN stock_prices prev ON prev.symbol = a.symbol AND prev.date = $1::date - ($3::int) * INTERVAL '1 day'
-      LEFT JOIN stock_symbols s ON s.symbol = a.symbol
-      ORDER BY latest_return_pct DESC NULLS LAST
+            WHEN $3 = 1 AND a.latest_daily_return IS NOT NULL THEN a.latest_daily_return
+            WHEN a.has_prior_close THEN (a.latest_close / a.prior_close) - 1
+            WHEN a.window_count = $3 AND a.all_positive_returns THEN EXP(a.log_return_sum) - 1
+            WHEN pp.price_before_window IS NOT NULL AND pp.price_before_window > 0 THEN (a.latest_close / pp.price_before_window) - 1
+            ELSE NULL
+          END AS latest_return_pct,
+          COALESCE(sp.volume, a.latest_volume, 0) AS volume,
+          COALESCE(sp.close_price, a.latest_close, 0) AS current_price,
+          COALESCE(
+            CASE
+              WHEN a.has_prior_close THEN a.prior_close
+              WHEN a.window_count = $3 AND a.all_positive_returns THEN a.latest_close / NULLIF(EXP(a.log_return_sum), 0)
+              ELSE pp.price_before_window
+            END,
+            prev.close_price,
+            0
+          ) AS prior_close,
+          CASE
+            WHEN a.has_prior_close THEN a.latest_close - a.prior_close
+            WHEN a.window_count = $3 AND a.all_positive_returns THEN a.latest_close - (a.latest_close / NULLIF(EXP(a.log_return_sum), 0))
+            WHEN pp.price_before_window IS NOT NULL AND pp.price_before_window > 0 THEN a.latest_close - pp.price_before_window
+            ELSE COALESCE(sp.change, 0)
+          END AS price_change,
+          CASE
+            WHEN a.has_prior_close AND a.prior_close <> 0 THEN (a.latest_close / a.prior_close) - 1
+            WHEN a.window_count = $3 AND a.all_positive_returns THEN EXP(a.log_return_sum) - 1
+            WHEN pp.price_before_window IS NOT NULL AND pp.price_before_window > 0 THEN (a.latest_close / pp.price_before_window) - 1
+            ELSE COALESCE(sp.change_percent, 0) / 100
+          END AS change_percent,
+          s.name AS full_name,
+          s.short_name,
+          s.market,
+          s.industry
+        FROM aggregated a
+        LEFT JOIN prior_price pp ON pp.symbol = a.symbol
+        LEFT JOIN stock_prices sp ON sp.symbol = a.symbol AND sp.date = $1::date
+        LEFT JOIN stock_prices prev ON prev.symbol = a.symbol AND prev.date = $1::date - ($3::int) * INTERVAL '1 day'
+        LEFT JOIN stock_symbols s ON s.symbol = a.symbol
+      )
+      SELECT * FROM final_data
+      ${whereClause}
+      ${orderClause}
       LIMIT $4
     `;
     const q = await client.query(sql, [isoDate, (market || 'all'), windowDays, lim]);
@@ -732,6 +749,7 @@ app.get('/api/returns/rankings', async (req, res) => {
       market: r.market || 'all',
       industry: r.industry || 'all',
       current_price: Number(r.current_price || 0),
+      prior_close: Number(r.prior_close || 0),
       price_change: Number(r.price_change || 0),
       change_percent: Number(r.change_percent || 0),
       latest_date: r.latest_date,
