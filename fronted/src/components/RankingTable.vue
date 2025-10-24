@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import StockDrawer from './StockDrawer.vue'
 import WatchlistPanel from './WatchlistPanel.vue'
 import { addToWatchlist, removeFromWatchlist, fetchWatchlist } from '../services/api'
@@ -10,7 +10,7 @@ const props = defineProps({
   period: { type: String, default: 'daily' },
   filters: { type: Object, default: () => ({ market: 'all', industry: 'all', returnRange: 'all', volumeThreshold: 0 }) },
 })
-const emit = defineEmits(['change-sort', 'update:period', 'update:filters', 'stock-action'])
+const emit = defineEmits(['change-sort', 'update:period', 'update:filters', 'update:rankingType', 'stock-action'])
 
 const activeMenu = ref(null)
 const watchlist = ref(new Set())
@@ -18,6 +18,23 @@ const drawerVisible = ref(false)
 const drawerMode = ref('detail')
 const selectedStock = ref(null)
 const watchlistPanelVisible = ref(false)
+
+// 方案五：分組篩選
+const selectedGroup = ref('all')
+const rankingType = ref('gainers') // 'gainers' 或 'losers'
+
+const groupOptions = [
+  { value: 'all', label: '全部', color: '#64c8ff' },
+  { value: 'hot', label: '強勢股 >10%', color: '#22c55e', min: 10 },
+  { value: 'rising', label: '上漲 5-10%', color: '#10b981', min: 5, max: 10 },
+  { value: 'stable', label: '平穩 0-5%', color: '#f59e0b', min: 0, max: 5 },
+  { value: 'falling', label: '下跌 <0%', color: '#ef4444', max: 0 },
+]
+
+const rankingTypeOptions = [
+  { value: 'gainers', label: '漲幅排行', icon: 'fa-arrow-trend-up', color: '#22c55e' },
+  { value: 'losers', label: '跌幅排行', icon: 'fa-arrow-trend-down', color: '#ef4444' },
+]
 
 const periodOptions = [
   { value: 'daily', label: '日' },
@@ -194,6 +211,141 @@ async function copySymbol(symbol) {
   }
 }
 
+// 生成迷你趨勢圖的點
+function generateTrendPoints(item) {
+  // 生成簡單的趨勢線（模擬數據）
+  const points = []
+  const segments = 10
+  const baseValue = 15
+  const trend = item.return || 0
+  
+  for (let i = 0; i <= segments; i++) {
+    const x = (i / segments) * 100
+    const randomVariation = (Math.random() - 0.5) * 5
+    const trendValue = (trend / 10) * i
+    const y = baseValue - trendValue + randomVariation
+    points.push(`${x},${Math.max(0, Math.min(30, y))}`)
+  }
+  
+  return points.join(' ')
+}
+
+// 方案五：分組邏輯（根據漲跌幅類型過濾）
+const groupedRows = computed(() => {
+  // 調試信息
+  console.log('=== RankingTable Debug ===')
+  console.log('Total rows:', props.rows.length)
+  console.log('Ranking type:', rankingType.value)
+  console.log('Selected group:', selectedGroup.value)
+  console.log('Sort:', props.sort)
+  
+  if (props.rows.length > 0) {
+    console.log('Sample data:', props.rows.slice(0, 3).map(r => ({
+      symbol: r.symbol,
+      return: r.return,
+      rank: r.rank
+    })))
+  }
+  
+  // 先根據漲跌幅類型過濾
+  let filteredRows = props.rows
+  if (rankingType.value === 'gainers') {
+    filteredRows = props.rows.filter(item => Number(item.return || 0) >= 0)
+  } else if (rankingType.value === 'losers') {
+    filteredRows = props.rows.filter(item => Number(item.return || 0) < 0)
+  }
+  
+  console.log('Filtered rows:', filteredRows.length)
+  if (filteredRows.length > 0) {
+    console.log('Filtered sample:', filteredRows.slice(0, 3).map(r => ({
+      symbol: r.symbol,
+      return: r.return
+    })))
+  }
+  
+  // 如果選擇「全部」或跌幅模式下選擇「下跌」分組，直接返回過濾後的數據
+  if (selectedGroup.value === 'all' || 
+      (rankingType.value === 'losers' && selectedGroup.value === 'falling')) {
+    return {
+      all: { 
+        items: filteredRows, 
+        label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
+        color: rankingType.value === 'gainers' ? '#22c55e' : '#ef4444'
+      }
+    }
+  }
+  
+  const groups = {}
+  groupOptions.forEach(option => {
+    if (option.value === 'all') return
+    
+    // 跌幅模式下跳過「下跌」分組（因為已經全部是下跌的）
+    if (rankingType.value === 'losers' && option.value === 'falling') return
+    
+    const filtered = filteredRows.filter(item => {
+      const returnValue = Number(item.return || 0)
+      if (option.min !== undefined && option.max !== undefined) {
+        return returnValue >= option.min && returnValue < option.max
+      } else if (option.min !== undefined) {
+        return returnValue >= option.min
+      } else if (option.max !== undefined) {
+        return returnValue < option.max
+      }
+      return false
+    })
+    
+    if (filtered.length > 0) {
+      groups[option.value] = {
+        items: filtered,
+        label: option.label,
+        color: option.color
+      }
+    }
+  })
+  
+  // 如果沒有任何分組，返回空的全部分組
+  if (Object.keys(groups).length === 0) {
+    return {
+      all: { 
+        items: filteredRows, 
+        label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
+        color: rankingType.value === 'gainers' ? '#22c55e' : '#ef4444'
+      }
+    }
+  }
+  
+  return groups
+})
+
+function selectGroup(value) {
+  selectedGroup.value = value
+}
+
+function selectRankingType(value) {
+  rankingType.value = value
+  // 切換類型時重置分組選擇
+  selectedGroup.value = 'all'
+  
+  // 通知父組件重新載入數據（帶上 rankingType 參數）
+  emit('update:rankingType', value)
+  
+  // 切換排序方向：漲幅排行用降序（從大到小），跌幅排行用升序（從小到大，即最跌的在前）
+  if (value === 'losers') {
+    // 跌幅排行：按報酬率升序排列（負數越小越前面）
+    emit('change-sort', { column: 'return', direction: 'asc' })
+  } else if (value === 'gainers') {
+    // 漲幅排行：按報酬率降序排列（正數越大越前面）
+    emit('change-sort', { column: 'return', direction: 'desc' })
+  }
+}
+
+function getGroupClass(returnValue) {
+  if (returnValue >= 10) return 'group-hot'
+  if (returnValue >= 5) return 'group-rising'
+  if (returnValue >= 0) return 'group-stable'
+  return 'group-falling'
+}
+
 function handleClickOutside(event) {
   if (activeMenu.value && !event.target.closest('.card-actions')) {
     closeMenu()
@@ -211,37 +363,78 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="ranking-section">
+  <section class="ranking-section waterfall-style">
     <div class="ranking-table-container">
       <div class="table-header">
-        <div class="ranking-header-card">
+        <div class="ranking-header-card waterfall-header">
           <div class="ranking-header-top">
-            <div class="table-title"><i class="fas fa-list-ol"></i> 市場排行榜</div>
+            <div class="table-title waterfall-title">
+              <i class="fas fa-layer-group"></i>
+              <span class="title-text">市場排行榜</span>
+              <span class="title-subtitle">智能分組顯示</span>
+            </div>
+            
+            <!-- 漲跌幅切換按鈕 -->
+            <div class="ranking-type-switch">
+              <button
+                v-for="option in rankingTypeOptions"
+                :key="option.value"
+                class="type-switch-btn"
+                :class="{ active: rankingType === option.value }"
+                :style="{ '--type-color': option.color }"
+                @click="selectRankingType(option.value)"
+              >
+                <i class="fas" :class="option.icon"></i>
+                <span>{{ option.label }}</span>
+              </button>
+            </div>
+            
             <div class="header-actions">
-              <button class="watchlist-btn" @click="openWatchlistPanel" title="我的自選股">
+              <button class="watchlist-btn waterfall-btn" @click="openWatchlistPanel" title="我的自選股">
                 <i class="fas fa-star"></i>
                 <span>自選股</span>
                 <span v-if="watchlist.size > 0" class="badge">{{ watchlist.size }}</span>
               </button>
             </div>
-            <div class="ranking-period-control">
+            <div class="ranking-period-control waterfall-tabs">
               <button
                 v-for="item in periodOptions"
                 :key="item.value"
                 type="button"
-                class="period-chip"
+                class="period-chip waterfall-tab"
                 :class="{ active: props.period === item.value }"
                 @click="onSelectPeriod(item.value)"
-              >{{ item.label }}</button>
+              >
+                <span class="tab-label">{{ item.label }}</span>
+                <span class="tab-indicator"></span>
+              </button>
             </div>
           </div>
-          <div class="ranking-filter-bar">
-            <label class="filter-label">市場別</label>
-            <select class="filter-input" :value="props.filters.market" @change="onSelectMarket">
-              <option value="all">全部市場</option>
-              <option value="listed">上市</option>
-              <option value="otc">上櫃</option>
-            </select>
+          <!-- 分組篩選標籤雲 -->
+          <div class="group-filter-bar">
+            <div class="filter-tags">
+              <button
+                v-for="option in groupOptions"
+                :key="option.value"
+                class="filter-tag"
+                :class="{ active: selectedGroup === option.value }"
+                :style="{ '--tag-color': option.color }"
+                @click="selectGroup(option.value)"
+              >
+                <span class="tag-label">{{ option.label }}</span>
+                <span class="tag-count" v-if="option.value !== 'all'">
+                  {{ groupedRows[option.value]?.items.length || 0 }}
+                </span>
+              </button>
+            </div>
+            <div class="market-filter">
+              <label class="filter-label">市場</label>
+              <select class="filter-input waterfall-select" :value="props.filters.market" @change="onSelectMarket">
+                <option value="all">全部</option>
+                <option value="listed">上市</option>
+                <option value="otc">上櫃</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -263,124 +456,128 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="ranking-list">
-          <article
-            v-for="item in rows"
-            :key="item.symbol + '-' + item.rank"
-            class="ranking-card"
-            :class="[
-              item.rank === 1 ? 'top-1' : '',
-              item.rank === 2 ? 'top-2' : '',
-              item.rank === 3 ? 'top-3' : ''
-            ]"
+        <!-- 瀑布流分組容器 -->
+        <div class="waterfall-container">
+          <!-- 空狀態提示 -->
+          <div v-if="Object.keys(groupedRows).length === 0 || (groupedRows.all && groupedRows.all.items.length === 0)" class="empty-state">
+            <i class="fas fa-inbox"></i>
+            <h3>暫無數據</h3>
+            <p v-if="rankingType === 'losers'">
+              當前沒有符合條件的下跌股票<br>
+              市場可能處於上漲趨勢 📈
+            </p>
+            <p v-else>
+              當前沒有符合條件的上漲股票<br>
+              市場可能處於下跌趨勢 📉
+            </p>
+            <button class="switch-type-btn" @click="selectRankingType(rankingType === 'gainers' ? 'losers' : 'gainers')">
+              切換到{{ rankingType === 'gainers' ? '跌幅' : '漲幅' }}排行
+            </button>
+          </div>
+
+          <div
+            v-for="(group, groupKey) in groupedRows"
+            :key="groupKey"
+            class="group-section"
+            :class="'group-' + groupKey"
           >
-            <div class="card-rank">
-              <span class="rank-badge" :class="{gold: item.rank===1, silver: item.rank===2, bronze: item.rank===3}">{{ item.rank }}</span>
-              <div
-                v-if="hasRankChange(item)"
-                class="rank-change"
-                :class="rankChangeClass(item)"
-                :title="rankChangeLabel(item)"
-              >
-                <i class="fas" :class="rankChangeIcon(item)"></i>
-                <span>{{ rankChangeText(item) }}</span>
+            <!-- 分組標題 -->
+            <div class="group-header" :style="{ '--group-color': group.color }">
+              <div class="group-title">
+                <i class="fas fa-folder-open"></i>
+                <span>{{ group.label }}</span>
               </div>
+              <div class="group-count">{{ group.items.length }} 檔</div>
             </div>
 
-            <div class="card-main">
-              <div class="stock-info">
-                <div class="stock-symbol">{{ item.symbol }}</div>
-                <div class="stock-name">{{ item.short_name || item.name }}</div>
-              </div>
-
-              <dl class="stat-grid">
-                <div class="stat-item">
-                  <dt>報酬率</dt>
-                  <dd :class="['stat-value', item.return>=0 ? 'positive' : 'negative']">
-                    <i class="fas" :class="item.return>=0?'fa-arrow-up':'fa-arrow-down'"></i>
-                    {{ Number(item.return).toFixed(2) }}%
-                  </dd>
-                </div>
-                <div class="stat-item">
-                  <dt>價格</dt>
-                  <dd class="stat-value">{{ Number(item.price).toFixed(2) }}</dd>
-                </div>
-                <div class="stat-item">
-                  <dt>漲跌</dt>
-                  <dd :class="['stat-value', item.change>=0 ? 'positive' : 'negative']">
-                    {{ (item.change>=0?'+':'') + Number(item.change).toFixed(2) }}
-                  </dd>
-                </div>
-                <div class="stat-item">
-                  <dt>成交量</dt>
-                  <dd class="stat-value">{{ Number(item.volume||0).toLocaleString() }}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div class="card-actions">
-              <button 
-                type="button" 
-                class="detail-button"
-                :class="{ active: activeMenu === item.symbol }"
-                @click="toggleMenu(item.symbol, $event)"
-                title="快捷操作"
+            <!-- 瀑布流卡片 -->
+            <div class="waterfall-grid">
+              <article
+                v-for="(item, index) in group.items"
+                :key="item.symbol + '-' + item.rank"
+                class="ranking-card waterfall-card"
+                :class="[
+                  getGroupClass(item.return),
+                  item.rank <= 3 ? 'top-rank' : ''
+                ]"
+                :style="{ '--card-index': index }"
               >
-                <i class="fas" :class="activeMenu === item.symbol ? 'fa-times' : 'fa-ellipsis-v'"></i>
-              </button>
-              
-              <transition name="menu-fade">
-                <div v-if="activeMenu === item.symbol" class="action-menu">
+                <!-- 卡片頭部 -->
+                <div class="card-header">
+                  <div class="rank-badge">
+                    <span class="rank-number">#{{ item.rank }}</span>
+                    <div
+                      v-if="hasRankChange(item)"
+                      class="rank-change-mini"
+                      :class="rankChangeClass(item)"
+                    >
+                      <i class="fas" :class="rankChangeIcon(item)"></i>
+                    </div>
+                  </div>
+                  <button
+                    class="watchlist-icon"
+                    :class="{ active: isInWatchlist(item.symbol) }"
+                    @click.stop="toggleWatchlist(item.symbol)"
+                  >
+                    <i class="fas" :class="isInWatchlist(item.symbol) ? 'fa-star' : 'fa-star-o'"></i>
+                  </button>
+                </div>
+
+                <!-- 卡片主體 -->
+                <div class="card-body">
+                  <div class="stock-info">
+                    <div class="stock-symbol">{{ item.symbol }}</div>
+                    <div class="stock-name">{{ item.short_name || item.name }}</div>
+                  </div>
+
+                  <!-- 主要數據 -->
+                  <div class="main-stat">
+                    <div class="stat-label">報酬率</div>
+                    <div :class="['stat-value', item.return>=0 ? 'positive' : 'negative']">
+                      <i class="fas" :class="item.return>=0?'fa-arrow-up':'fa-arrow-down'"></i>
+                      {{ Number(item.return).toFixed(2) }}%
+                    </div>
+                  </div>
+
+                  <!-- 次要數據 -->
+                  <div class="secondary-stats">
+                    <div class="stat-row">
+                      <span class="label">價格</span>
+                      <span class="value">{{ Number(item.price).toFixed(2) }}</span>
+                    </div>
+                    <div class="stat-row">
+                      <span class="label">漲跌</span>
+                      <span :class="['value', item.change>=0 ? 'positive' : 'negative']">
+                        {{ (item.change>=0?'+':'') + Number(item.change).toFixed(2) }}
+                      </span>
+                    </div>
+                    <div class="stat-row">
+                      <span class="label">成交量</span>
+                      <span class="value">{{ (Number(item.volume||0)/1000).toFixed(0) }}K</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 卡片底部操作 -->
+                <div class="card-footer">
                   <button 
-                    type="button"
-                    class="menu-item"
+                    class="action-btn"
                     @click="handleAction('detail', item, $event)"
                   >
                     <i class="fas fa-chart-line"></i>
-                    <span>查看詳情</span>
+                    詳情
                   </button>
-                  
                   <button 
-                    type="button"
-                    class="menu-item"
-                    :class="{ active: isInWatchlist(item.symbol) }"
-                    @click="handleAction('watchlist', item, $event)"
-                  >
-                    <i class="fas" :class="isInWatchlist(item.symbol) ? 'fa-star' : 'fa-star-o'"></i>
-                    <span>{{ isInWatchlist(item.symbol) ? '移除自選' : '加入自選' }}</span>
-                  </button>
-                  
-                  <button 
-                    type="button"
-                    class="menu-item"
-                    @click="handleAction('alert', item, $event)"
-                  >
-                    <i class="fas fa-bell"></i>
-                    <span>價格提醒</span>
-                  </button>
-
-                  <button 
-                    type="button"
-                    class="menu-item"
+                    class="action-btn"
                     @click="handleAction('analysis', item, $event)"
                   >
                     <i class="fas fa-wave-square"></i>
-                    <span>技術分析</span>
+                    分析
                   </button>
-
-                  <button 
-                    type="button"
-                    class="menu-item"
-                    @click="handleAction('news', item, $event)"
-                  >
-                    <i class="fas fa-newspaper"></i>
-                    <span>相關新聞</span>
-                  </button>
-                  
                 </div>
-              </transition>
+              </article>
             </div>
-          </article>
+          </div>
         </div>
       </div>
     </div>
