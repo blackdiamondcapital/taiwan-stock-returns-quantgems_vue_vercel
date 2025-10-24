@@ -20,6 +20,9 @@ const chartMode = ref('standard')
 const showKD = ref(localStorage.getItem('chartShowKD') === 'true')
 const showMACD = ref(localStorage.getItem('chartShowMACD') === 'true')
 
+// Fullscreen state
+const isFullscreen = ref(false)
+
 // KD Parameters
 const kdParams = ref({
   period: parseInt(localStorage.getItem('chartKDPeriod') || '9'),
@@ -63,6 +66,33 @@ function togglePanelSection(section) {
   localStorage.setItem(`chartPanel${section.charAt(0).toUpperCase() + section.slice(1)}`, panelSections.value[section].toString())
 }
 
+// Toggle fullscreen
+function toggleFullscreen() {
+  const chartElement = document.querySelector('.stock-chart')
+  
+  if (!isFullscreen.value) {
+    // Enter fullscreen
+    if (chartElement.requestFullscreen) {
+      chartElement.requestFullscreen()
+    } else if (chartElement.webkitRequestFullscreen) {
+      chartElement.webkitRequestFullscreen()
+    } else if (chartElement.msRequestFullscreen) {
+      chartElement.msRequestFullscreen()
+    }
+    isFullscreen.value = true
+  } else {
+    // Exit fullscreen
+    if (document.exitFullscreen) {
+      document.exitFullscreen()
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen()
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen()
+    }
+    isFullscreen.value = false
+  }
+}
+
 // Save KD parameters to localStorage
 function saveKDParams() {
   localStorage.setItem('chartKDPeriod', kdParams.value.period.toString())
@@ -95,8 +125,7 @@ const periodOptions = [
   { key: 'week', period: '1W', label: '週K' },
   { key: 'month', period: '1M', label: '月K' },
   { key: 'halfYear', period: '6M', label: '半年K' },
-  { key: 'oneYear', period: '1Y', label: '一年K' },
-  { key: 'twoYear', period: '2Y', label: '兩年K' }
+  { key: 'oneYear', period: '1Y', label: '一年K' }
 ]
 
 const periodKeyMap = new Map(periodOptions.map(option => [option.key, option]))
@@ -323,12 +352,17 @@ function renderChart() {
     legend: [
       {
         data: [`MA${maParams.value.ma1}`, `MA${maParams.value.ma2}`, `MA${maParams.value.ma3}`, `MA${maParams.value.ma4}`, `MA${maParams.value.ma5}`],
+        top: '8%',
+        left: 'center',
+        orient: 'horizontal',
+        itemGap: 20,
+        backgroundColor: 'rgba(15, 23, 42, 0.8)',
+        borderRadius: 6,
+        padding: [8, 16],
         textStyle: {
-          color: 'rgba(226, 232, 240, 0.8)',
-          fontSize: 12
-        },
-        top: 10,
-        left: 'left'
+          color: 'rgba(226, 232, 240, 0.9)',
+          fontSize: 11
+        }
       },
       ...(showKD.value ? [{
         data: [
@@ -841,6 +875,33 @@ onMounted(async () => {
       toggleControlPanel()
     }
   })
+  
+  // Listen for fullscreen changes
+  document.addEventListener('fullscreenchange', () => {
+    isFullscreen.value = !!document.fullscreenElement
+    // Delay chart resize to ensure DOM is updated
+    setTimeout(() => {
+      if (chartInstance) {
+        chartInstance.resize()
+      }
+    }, 100)
+  })
+  document.addEventListener('webkitfullscreenchange', () => {
+    isFullscreen.value = !!document.webkitFullscreenElement
+    setTimeout(() => {
+      if (chartInstance) {
+        chartInstance.resize()
+      }
+    }, 100)
+  })
+  document.addEventListener('msfullscreenchange', () => {
+    isFullscreen.value = !!document.msFullscreenElement
+    setTimeout(() => {
+      if (chartInstance) {
+        chartInstance.resize()
+      }
+    }, 100)
+  })
 })
 
 onUnmounted(() => {
@@ -873,6 +934,15 @@ onUnmounted(() => {
             {{ option.label }}
           </button>
         </div>
+        
+        <!-- Fullscreen Button -->
+        <button 
+          class="fullscreen-btn" 
+          @click="toggleFullscreen"
+          :title="isFullscreen ? '退出全螢幕' : '全螢幕'"
+        >
+          <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+        </button>
         
         <!-- Chart Control Button -->
         <button 
@@ -1137,12 +1207,6 @@ onUnmounted(() => {
   box-shadow: none !important;
 }
 
-.chart-header {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .chart-header > div:first-child {
   display: flex;
   justify-content: flex-start;
@@ -1163,6 +1227,26 @@ onUnmounted(() => {
 
 .chart-title i {
   color: rgba(100, 200, 255, 0.8);
+}
+
+.chart-header {
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: rgba(15, 23, 42, 1);
+  backdrop-filter: blur(10px);
+  padding: 12px 16px;
+  margin: -16px -16px 8px -16px;
+  border-bottom: 1px solid rgba(100, 200, 255, 0.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  /* 方案五：硬件加速層級分離 */
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
 /* Frequency Controls */
@@ -1209,20 +1293,46 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
+/* Fullscreen Button */
+.fullscreen-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(100, 200, 255, 0.1);
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  color: rgba(100, 200, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(100, 200, 255, 0.15);
+  border-color: rgba(100, 200, 255, 0.4);
+  color: #fff;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(100, 200, 255, 0.2);
+}
+
 /* Chart Control Button */
 .chart-control-btn {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid rgba(100, 200, 255, 0.25);
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(100, 200, 255, 0.1);
+  border: 1px solid rgba(100, 200, 255, 0.2);
   color: rgba(100, 200, 255, 0.8);
   cursor: pointer;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -1232,6 +1342,38 @@ onUnmounted(() => {
   color: #fff;
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(100, 200, 255, 0.2);
+}
+
+/* Fullscreen mode styles */
+.stock-chart:fullscreen {
+  background: rgba(15, 23, 42, 1);
+  padding: 0;
+  margin: 0;
+}
+
+.stock-chart:fullscreen .chart-header {
+  position: relative !important;
+  width: 100% !important;
+  height: auto !important;
+  padding: 16px !important;
+  margin: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+.stock-chart:fullscreen .chart-title {
+  text-align: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+}
+
+.stock-chart:fullscreen .frequency-controls {
+  justify-content: center !important;
+  width: 100% !important;
 }
 
 /* Floating Gear Button */
@@ -1766,48 +1908,35 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.chart-empty span {
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.5);
-}
-
-.chart-wrapper {
-  position: relative;
-  width: 100%;
-  /* Remove any outer frame/glow */
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
+/* Fix sticky header z-index over chart - Ensure chart stays below header */
 .chart-container {
   width: 100% !important;
   height: 640px !important;
   min-height: 640px !important;
+  position: relative !important;
+  z-index: 1 !important;
+  overflow: visible !important;
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
   padding: 0 !important;
   display: block !important;
   visibility: visible !important;
-  position: relative !important;
 }
 
-/* Ensure no glow from pseudo-elements of wrappers */
-.chart-wrapper::before,
-.chart-wrapper::after,
-.stock-chart::before,
-.stock-chart::after {
-  content: none !important;
-  box-shadow: none !important;
-  border: none !important;
+/* Fix sticky header z-index over chart */
+.chart-wrapper {
+  position: relative;
+  z-index: 1;
+  /* Remove any outer frame/glow */
   background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .chart-info {
   display: flex;
   justify-content: center;
-  padding: 8px;
   background: rgba(15, 23, 42, 0.4);
   border-radius: 8px;
 }
