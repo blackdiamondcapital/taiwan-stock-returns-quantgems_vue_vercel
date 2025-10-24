@@ -14,9 +14,9 @@ export async function httpGet(path, params = {}) {
 }
 
 // Placeholders to be expanded in next steps
-export async function fetchRankings({ period, market, industry, returnRange, volumeThreshold, date, limit = 50 }) {
+export async function fetchRankings({ period, market, industry, returnRange, volumeThreshold, date, limit = 50, rankingType = 'all' }) {
   try {
-    const json = await httpGet('/returns/rankings', { period, market, industry, returnRange, volumeThreshold, date, limit });
+    const json = await httpGet('/returns/rankings', { period, market, industry, returnRange, volumeThreshold, date, limit, rankingType });
     return json?.data ?? [];
   } catch (e) {
     console.warn('fetchRankings error', e);
