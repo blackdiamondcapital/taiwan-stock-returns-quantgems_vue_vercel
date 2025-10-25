@@ -37,13 +37,26 @@ const viewModeOptions = [
 const selectedGroup = ref('all')
 const rankingType = ref('gainers') // 'gainers' 或 'losers'
 
-const groupOptions = [
-  { value: 'all', label: '全部', color: '#64c8ff' },
-  { value: 'hot', label: '強勢股 >10%', color: '#ef4444', min: 10 },
-  { value: 'rising', label: '上漲 5-10%', color: '#f87171', min: 5, max: 10 },
-  { value: 'stable', label: '平穩 0-5%', color: '#f59e0b', min: 0, max: 5 },
-  { value: 'falling', label: '下跌 <0%', color: '#22c55e', max: 0 },
-]
+// 動態分組選項：根據排行類型顯示不同的分組
+const groupOptions = computed(() => {
+  if (rankingType.value === 'losers') {
+    // 跌幅排行：顯示負值分組
+    return [
+      { value: 'all', label: '全部', color: '#64c8ff' },
+      { value: 'hot', label: '重挫股 ≤-10%', color: '#22c55e', max: -10, inclusive: true },
+      { value: 'rising', label: '大跌 -10% ~ -5%', color: '#4ade80', min: -10, max: -5 },
+      { value: 'stable', label: '小跌 -5% ~ 0%', color: '#86efac', min: -5, max: 0 },
+    ]
+  } else {
+    // 漲幅排行：顯示正值分組
+    return [
+      { value: 'all', label: '全部', color: '#64c8ff' },
+      { value: 'hot', label: '強勢股 ≥10%', color: '#ef4444', min: 10, inclusive: true },
+      { value: 'rising', label: '上漲 5-10%', color: '#f87171', min: 5, max: 10 },
+      { value: 'stable', label: '平穩 0-5%', color: '#f59e0b', min: 0, max: 5 },
+    ]
+  }
+})
 
 const rankingTypeOptions = [
   { value: 'gainers', label: '漲幅排行', icon: 'fa-arrow-trend-up', color: '#ef4444' },
@@ -277,58 +290,67 @@ const groupedRows = computed(() => {
     })))
   }
   
-  // 如果選擇「全部」或跌幅模式下選擇「下跌」分組，直接返回過濾後的數據
-  if (selectedGroup.value === 'all' || 
-      (rankingType.value === 'losers' && selectedGroup.value === 'falling')) {
-    return {
-      all: { 
-        items: filteredRows, 
-        label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
-        color: rankingType.value === 'gainers' ? '#ef4444' : '#22c55e'
-      }
+  // 計算所有分組（無論當前選擇哪個分組，都要計算所有分組的數量）
+  const groups = {
+    all: { 
+      items: filteredRows, 
+      label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
+      color: rankingType.value === 'gainers' ? '#ef4444' : '#22c55e'
     }
   }
   
-  const groups = {}
-  groupOptions.forEach(option => {
+  groupOptions.value.forEach(option => {
     if (option.value === 'all') return
-    
-    // 跌幅模式下跳過「下跌」分組（因為已經全部是下跌的）
-    if (rankingType.value === 'losers' && option.value === 'falling') return
     
     const filtered = filteredRows.filter(item => {
       const returnValue = Number(item.return || 0)
       if (option.min !== undefined && option.max !== undefined) {
+        // 有上下限
         return returnValue >= option.min && returnValue < option.max
       } else if (option.min !== undefined) {
-        return returnValue >= option.min
+        // 只有下限（如：≥10%）
+        if (option.inclusive) {
+          return returnValue >= option.min  // 包含等於
+        } else {
+          return returnValue > option.min   // 不包含等於
+        }
       } else if (option.max !== undefined) {
-        return returnValue < option.max
+        // 只有上限（如：≤-10%）
+        if (option.inclusive) {
+          return returnValue <= option.max  // 包含等於
+        } else {
+          return returnValue < option.max   // 不包含等於
+        }
       }
       return false
     })
     
-    if (filtered.length > 0) {
-      groups[option.value] = {
-        items: filtered,
-        label: option.label,
-        color: option.color
-      }
+    // 即使數量為 0 也要加入，這樣按鈕才能顯示 0
+    groups[option.value] = {
+      items: filtered,
+      label: option.label,
+      color: option.color
     }
   })
   
-  // 如果沒有任何分組，返回空的全部分組
-  if (Object.keys(groups).length === 0) {
-    return {
-      all: { 
-        items: filteredRows, 
-        label: rankingType.value === 'gainers' ? '全部上漲股票' : '全部下跌股票', 
-        color: rankingType.value === 'gainers' ? '#ef4444' : '#22c55e'
+  return groups
+})
+
+// 根據選中的分組過濾顯示的數據
+const displayedGroups = computed(() => {
+  if (selectedGroup.value === 'all') {
+    // 顯示所有分組
+    return groupedRows.value
+  } else {
+    // 只顯示選中的分組
+    const selectedGroupData = groupedRows.value[selectedGroup.value]
+    if (selectedGroupData) {
+      return {
+        [selectedGroup.value]: selectedGroupData
       }
     }
+    return {}
   }
-  
-  return groups
 })
 
 function selectGroup(value) {
@@ -337,7 +359,9 @@ function selectGroup(value) {
 
 function selectRankingType(value) {
   rankingType.value = value
-  // 切換類型時重置分組選擇
+  
+  // 切換類型時重置分組選擇為「全部」
+  // 特別是從跌幅切換到漲幅時，如果當前選擇的是「下跌」分組，必須重置
   selectedGroup.value = 'all'
   
   // 通知父組件重新載入數據（帶上 rankingType 參數）
@@ -530,7 +554,7 @@ onUnmounted(() => {
         <!-- 瀑布流分組容器 -->
         <div class="waterfall-container">
           <!-- 空狀態提示 -->
-          <div v-if="Object.keys(groupedRows).length === 0 || (groupedRows.all && groupedRows.all.items.length === 0)" class="empty-state">
+          <div v-if="Object.keys(displayedGroups).length === 0 || (displayedGroups.all && displayedGroups.all.items.length === 0)" class="empty-state">
             <i class="fas fa-inbox"></i>
             <h3>暫無數據</h3>
             <p v-if="rankingType === 'losers'">
@@ -547,7 +571,7 @@ onUnmounted(() => {
           </div>
 
           <div
-            v-for="(group, groupKey) in groupedRows"
+            v-for="(group, groupKey) in displayedGroups"
             :key="groupKey"
             class="group-section"
             :class="'group-' + groupKey"
