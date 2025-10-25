@@ -191,7 +191,15 @@ app.get('/api/returns/statistics', async (req, res) => {
     const isoDate = toIsoDate(targetDate) || targetDate;
 
     const metricsSql = `
-      WITH base AS (
+      WITH twii_volume AS (
+        SELECT
+          COALESCE(volume, 0)::numeric AS market_volume
+        FROM stock_prices
+        WHERE symbol = '^TWII'
+          AND date = $1::date
+        LIMIT 1
+      ),
+      base AS (
         SELECT
           r.symbol,
           r.date,
@@ -332,6 +340,34 @@ app.get('/api/returns/statistics', async (req, res) => {
           )
         GROUP BY sp.symbol
       ),
+      ma5 AS (
+        SELECT
+          sp.symbol,
+          AVG(COALESCE(sp.close_price, 0))::numeric AS ma5_value,
+          COUNT(*) AS sample_count
+        FROM stock_prices sp
+        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        WHERE sp.date BETWEEN $1::date - INTERVAL '4 days' AND $1::date
+          AND (
+            $2::text = 'all'
+            OR s.market = $2::text
+          )
+        GROUP BY sp.symbol
+      ),
+      ma10 AS (
+        SELECT
+          sp.symbol,
+          AVG(COALESCE(sp.close_price, 0))::numeric AS ma10_value,
+          COUNT(*) AS sample_count
+        FROM stock_prices sp
+        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        WHERE sp.date BETWEEN $1::date - INTERVAL '9 days' AND $1::date
+          AND (
+            $2::text = 'all'
+            OR s.market = $2::text
+          )
+        GROUP BY sp.symbol
+      ),
       ma20 AS (
         SELECT
           sp.symbol,
@@ -345,6 +381,34 @@ app.get('/api/returns/statistics', async (req, res) => {
             OR s.market = $2::text
           )
         GROUP BY sp.symbol
+      ),
+      ma120 AS (
+        SELECT
+          sp.symbol,
+          AVG(COALESCE(sp.close_price, 0))::numeric AS ma120_value,
+          COUNT(*) AS sample_count
+        FROM stock_prices sp
+        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        WHERE sp.date BETWEEN $1::date - INTERVAL '119 days' AND $1::date
+          AND (
+            $2::text = 'all'
+            OR s.market = $2::text
+          )
+        GROUP BY sp.symbol
+      ),
+      ma240 AS (
+        SELECT
+          sp.symbol,
+          AVG(COALESCE(sp.close_price, 0))::numeric AS ma240_value,
+          COUNT(*) AS sample_count
+        FROM stock_prices sp
+        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        WHERE sp.date BETWEEN $1::date - INTERVAL '239 days' AND $1::date
+          AND (
+            $2::text = 'all'
+            OR s.market = $2::text
+          )
+        GROUP BY sp.symbol
       )
       SELECT
         COUNT(*) AS total_count,
@@ -353,10 +417,41 @@ app.get('/api/returns/statistics', async (req, res) => {
         SUM(CASE WHEN period_return = 0 THEN 1 ELSE 0 END) AS unchanged,
         SUM(CASE WHEN period_return >= 0.02 THEN 1 ELSE 0 END) AS greater_2pct,
         SUM(CASE WHEN period_return <= -0.02 THEN 1 ELSE 0 END) AS less_neg_2pct,
+        -- 上漲幅度分布
+        SUM(CASE WHEN period_return > 0.05 THEN 1 ELSE 0 END) AS gain_5_plus_count,
+        SUM(CASE WHEN period_return >= 0.02 AND period_return <= 0.05 THEN 1 ELSE 0 END) AS gain_2_to_5_count,
+        SUM(CASE WHEN period_return > 0 AND period_return < 0.02 THEN 1 ELSE 0 END) AS gain_0_to_2_count,
+        -- 下跌幅度分布
+        SUM(CASE WHEN period_return < -0.05 THEN 1 ELSE 0 END) AS loss_5_plus_count,
+        SUM(CASE WHEN period_return >= -0.05 AND period_return <= -0.02 THEN 1 ELSE 0 END) AS loss_2_to_5_count,
+        SUM(CASE WHEN period_return < 0 AND period_return > -0.02 THEN 1 ELSE 0 END) AS loss_0_to_2_count,
+        -- 市場參與度（成交量 > 中位數）
+        SUM(CASE WHEN volume > (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY volume) FROM returns) THEN 1 ELSE 0 END) AS active_stocks_count,
+        -- 風險指標：跌幅超過 5%
+        SUM(CASE WHEN period_return < -0.05 THEN 1 ELSE 0 END) AS heavy_losers_count,
+        -- 風險指標：跌幅超過 7%
+        SUM(CASE WHEN period_return < -0.07 THEN 1 ELSE 0 END) AS severe_decliners_count,
+        -- 風險指標：跌幅超過 10%（重挫）
+        SUM(CASE WHEN period_return < -0.10 THEN 1 ELSE 0 END) AS crash_stocks_count,
+        SUM(
+          CASE
+            WHEN pt.current_high IS NOT NULL AND r.prior_close IS NOT NULL AND r.prior_close > 0
+                 AND pt.current_high >= r.prior_close * 1.099
+            THEN 1 ELSE 0 END
+        ) AS limit_up_count,
+        SUM(
+          CASE
+            WHEN pt.current_low IS NOT NULL AND r.prior_close IS NOT NULL AND r.prior_close > 0
+                 AND pt.current_low <= r.prior_close * 0.901
+            THEN 1 ELSE 0 END
+        ) AS limit_down_count,
         AVG(period_return) AS avg_return,
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY volume) AS median_volume,
         SUM(CASE WHEN period_return >= 0 THEN volume ELSE 0 END) AS up_volume,
         SUM(CASE WHEN period_return < 0 THEN volume ELSE 0 END) AS down_volume,
+        SUM(volume) AS total_volume,
+        -- 成交金額（千億元）：從加權指數取得
+        (SELECT market_volume FROM twii_volume) / 100000000000.0 AS total_value_real,
         SUM(CASE WHEN ABS(period_return) >= 0.05 THEN 1 ELSE 0 END) AS high_volatility_count,
         SUM(
           CASE
@@ -372,6 +467,24 @@ app.get('/api/returns/statistics', async (req, res) => {
               AND pt.current_low <= l.low_52w * 1.001
             THEN 1 ELSE 0 END
         ) AS new_low_52w,
+        SUM(CASE WHEN ma5.sample_count >= 3 THEN 1 ELSE 0 END) AS ma5_sample_count,
+        SUM(
+          CASE
+            WHEN ma5.sample_count >= 3
+              AND ma5.ma5_value IS NOT NULL
+              AND pt.current_close IS NOT NULL
+              AND pt.current_close >= ma5.ma5_value
+            THEN 1 ELSE 0 END
+        ) AS ma5_above_count,
+        SUM(CASE WHEN ma10.sample_count >= 5 THEN 1 ELSE 0 END) AS ma10_sample_count,
+        SUM(
+          CASE
+            WHEN ma10.sample_count >= 5
+              AND ma10.ma10_value IS NOT NULL
+              AND pt.current_close IS NOT NULL
+              AND pt.current_close >= ma10.ma10_value
+            THEN 1 ELSE 0 END
+        ) AS ma10_above_count,
         SUM(CASE WHEN ma20.sample_count >= 10 THEN 1 ELSE 0 END) AS ma20_sample_count,
         SUM(
           CASE
@@ -389,13 +502,106 @@ app.get('/api/returns/statistics', async (req, res) => {
               AND pt.current_close IS NOT NULL
               AND pt.current_close >= ma.ma60_value
             THEN 1 ELSE 0 END
-        ) AS ma60_above_count
+        ) AS ma60_above_count,
+        -- 風險指標：破底股票數（跌破 MA60）
+        SUM(
+          CASE
+            WHEN ma.sample_count >= 30
+              AND ma.ma60_value IS NOT NULL
+              AND pt.current_close IS NOT NULL
+              AND pt.current_close < ma.ma60_value
+            THEN 1 ELSE 0 END
+        ) AS breakdown_stocks_count,
+        -- 風險指標：成交量萎縮（< 20日均量 50%）
+        SUM(
+          CASE
+            WHEN volume < (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY volume) FROM returns) * 0.5
+            THEN 1 ELSE 0 END
+        ) AS volume_dry_stocks_count,
+        SUM(CASE WHEN ma120.sample_count >= 60 THEN 1 ELSE 0 END) AS ma120_sample_count,
+        SUM(
+          CASE
+            WHEN ma120.sample_count >= 60
+              AND ma120.ma120_value IS NOT NULL
+              AND pt.current_close IS NOT NULL
+              AND pt.current_close >= ma120.ma120_value
+            THEN 1 ELSE 0 END
+        ) AS ma120_above_count,
+        SUM(CASE WHEN ma240.sample_count >= 120 THEN 1 ELSE 0 END) AS ma240_sample_count,
+        SUM(
+          CASE
+            WHEN ma240.sample_count >= 120
+              AND ma240.ma240_value IS NOT NULL
+              AND pt.current_close IS NOT NULL
+              AND pt.current_close >= ma240.ma240_value
+            THEN 1 ELSE 0 END
+        ) AS ma240_above_count,
+        -- 黃金交叉：MA5 > MA20
+        SUM(
+          CASE
+            WHEN ma5.ma5_value IS NOT NULL
+              AND ma20.ma20_value IS NOT NULL
+              AND ma5.ma5_value > ma20.ma20_value
+            THEN 1 ELSE 0 END
+        ) AS golden_cross_5_20,
+        -- 黃金交叉：MA10 > MA60
+        SUM(
+          CASE
+            WHEN ma10.ma10_value IS NOT NULL
+              AND ma.ma60_value IS NOT NULL
+              AND ma10.ma10_value > ma.ma60_value
+            THEN 1 ELSE 0 END
+        ) AS golden_cross_10_60,
+        -- 死亡交叉：MA5 < MA20
+        SUM(
+          CASE
+            WHEN ma5.ma5_value IS NOT NULL
+              AND ma20.ma20_value IS NOT NULL
+              AND ma5.ma5_value < ma20.ma20_value
+            THEN 1 ELSE 0 END
+        ) AS death_cross_5_20,
+        -- 死亡交叉：MA10 < MA60
+        SUM(
+          CASE
+            WHEN ma10.ma10_value IS NOT NULL
+              AND ma.ma60_value IS NOT NULL
+              AND ma10.ma10_value < ma.ma60_value
+            THEN 1 ELSE 0 END
+        ) AS death_cross_10_60,
+        -- 多頭排列：MA5 > MA10 > MA20 > MA60
+        SUM(
+          CASE
+            WHEN ma5.ma5_value IS NOT NULL
+              AND ma10.ma10_value IS NOT NULL
+              AND ma20.ma20_value IS NOT NULL
+              AND ma.ma60_value IS NOT NULL
+              AND ma5.ma5_value > ma10.ma10_value
+              AND ma10.ma10_value > ma20.ma20_value
+              AND ma20.ma20_value > ma.ma60_value
+            THEN 1 ELSE 0 END
+        ) AS bullish_alignment_count,
+        -- 空頭排列：MA5 < MA10 < MA20 < MA60
+        SUM(
+          CASE
+            WHEN ma5.ma5_value IS NOT NULL
+              AND ma10.ma10_value IS NOT NULL
+              AND ma20.ma20_value IS NOT NULL
+              AND ma.ma60_value IS NOT NULL
+              AND ma5.ma5_value < ma10.ma10_value
+              AND ma10.ma10_value < ma20.ma20_value
+              AND ma20.ma20_value < ma.ma60_value
+            THEN 1 ELSE 0 END
+        ) AS bearish_alignment_count
       FROM returns r
       LEFT JOIN price_today pt ON pt.symbol = r.symbol
       LEFT JOIN high_52w h ON h.symbol = r.symbol
       LEFT JOIN low_52w l ON l.symbol = r.symbol
-      LEFT JOIN ma60 ma ON ma.symbol = r.symbol
+      LEFT JOIN ma5 ON ma5.symbol = r.symbol
+      LEFT JOIN ma10 ON ma10.symbol = r.symbol
       LEFT JOIN ma20 ON ma20.symbol = r.symbol
+      LEFT JOIN ma60 ma ON ma.symbol = r.symbol
+      LEFT JOIN ma120 ON ma120.symbol = r.symbol
+      LEFT JOIN ma240 ON ma240.symbol = r.symbol
     `;
     const stat = await client.query(metricsSql, [isoDate, (market || 'all'), windowDays] );
 
@@ -497,22 +703,36 @@ app.get('/api/returns/statistics', async (req, res) => {
 
     const aggregate = stat.rows[0] || {};
     const t = top.rows[0] || null;
+    
     const totalCount = Number(aggregate.total_count || 0);
     const advancers = Number(aggregate.advancers || 0);
     const decliners = Number(aggregate.decliners || 0);
     const unchanged = Number(aggregate.unchanged || 0);
     const greater2 = Number(aggregate.greater_2pct || 0);
     const lessNeg2 = Number(aggregate.less_neg_2pct || 0);
+    const limitUpCount = Number(aggregate.limit_up_count || 0);
+    const limitDownCount = Number(aggregate.limit_down_count || 0);
     const avgReturn = Number((aggregate.avg_return || 0) * 100);
     const medianReturn = aggregate.median_return !== null && aggregate.median_return !== undefined ? Number(aggregate.median_return) * 100 : null;
     const medianVolume = aggregate.median_volume !== null && aggregate.median_volume !== undefined ? Number(aggregate.median_volume) : null;
     const upVolume = Number(aggregate.up_volume || 0);
     const downVolume = Number(aggregate.down_volume || 0);
+    const totalVolume = Number(aggregate.total_volume || 0);
     const upDownVolumeRatio = downVolume === 0 ? null : upVolume / downVolume;
+    // 以實際價格*量計算的成交金額（億元）
+    const totalValue = Number(aggregate.total_value_real || 0);
+    const valueChange = 0; // 需要從歷史數據計算，暫時設為 0
+    const avgValue20 = totalValue; // 需要從歷史數據計算，暫時設為當前值
     const highVolCount = Number(aggregate.high_volatility_count || 0);
     const hiVolatilityRatio = totalCount ? (highVolCount / totalCount) * 100 : 0;
     const adRatio = decliners === 0 ? null : advancers / decliners;
     const trendPercent = totalCount ? ((advancers - decliners) / totalCount) * 100 : 0;
+    const ma5SampleCount = Number(aggregate.ma5_sample_count || 0);
+    const ma5AboveCount = Number(aggregate.ma5_above_count || 0);
+    const ma5Ratio = ma5SampleCount ? (ma5AboveCount / ma5SampleCount) * 100 : 0;
+    const ma10SampleCount = Number(aggregate.ma10_sample_count || 0);
+    const ma10AboveCount = Number(aggregate.ma10_above_count || 0);
+    const ma10Ratio = ma10SampleCount ? (ma10AboveCount / ma10SampleCount) * 100 : 0;
     const ma20SampleCount = Number(aggregate.ma20_sample_count || 0);
     const ma20AboveCount = Number(aggregate.ma20_above_count || 0);
     const ma20Ratio = ma20SampleCount ? (ma20AboveCount / ma20SampleCount) * 100 : 0;
@@ -522,8 +742,40 @@ app.get('/api/returns/statistics', async (req, res) => {
     const ma60SampleCount = Number(aggregate.ma60_sample_count || 0);
     const ma60AboveCount = Number(aggregate.ma60_above_count || 0);
     const ma60Ratio = ma60SampleCount ? (ma60AboveCount / ma60SampleCount) * 100 : 0;
+    const ma120SampleCount = Number(aggregate.ma120_sample_count || 0);
+    const ma120AboveCount = Number(aggregate.ma120_above_count || 0);
+    const ma120Ratio = ma120SampleCount ? (ma120AboveCount / ma120SampleCount) * 100 : 0;
+    const ma240SampleCount = Number(aggregate.ma240_sample_count || 0);
+    const ma240AboveCount = Number(aggregate.ma240_above_count || 0);
+    const ma240Ratio = ma240SampleCount ? (ma240AboveCount / ma240SampleCount) * 100 : 0;
     const ma60TrendPercent = ma60Ratio - ma20Ratio;
     const ma20TrendPercent = ma20Ratio - ma60Ratio;
+    const goldenCross5_20 = Number(aggregate.golden_cross_5_20 || 0);
+    const goldenCross10_60 = Number(aggregate.golden_cross_10_60 || 0);
+    const goldenCrossCount = goldenCross5_20 + goldenCross10_60;
+    const deathCross5_20 = Number(aggregate.death_cross_5_20 || 0);
+    const deathCross10_60 = Number(aggregate.death_cross_10_60 || 0);
+    const deathCrossCount = deathCross5_20 + deathCross10_60;
+    const bullishAlignmentCount = Number(aggregate.bullish_alignment_count || 0);
+    const bearishAlignmentCount = Number(aggregate.bearish_alignment_count || 0);
+    // 市場廣度指標
+    const adlValue = advancers - decliners; // 騰落線當日值
+    const adlChange = 0; // 需要歷史數據，暫時為 0
+    const gain5PlusCount = Number(aggregate.gain_5_plus_count || 0);
+    const gain2To5Count = Number(aggregate.gain_2_to_5_count || 0);
+    const gain0To2Count = Number(aggregate.gain_0_to_2_count || 0);
+    const loss5PlusCount = Number(aggregate.loss_5_plus_count || 0);
+    const loss2To5Count = Number(aggregate.loss_2_to_5_count || 0);
+    const loss0To2Count = Number(aggregate.loss_0_to_2_count || 0);
+    const activeStocksCount = Number(aggregate.active_stocks_count || 0);
+    const inactiveStocksCount = totalCount - activeStocksCount;
+    // 風險指標
+    const heavyLosersCount = Number(aggregate.heavy_losers_count || 0);
+    const severeDeclinersCount = Number(aggregate.severe_decliners_count || 0);
+    const crashStocksCount = Number(aggregate.crash_stocks_count || 0);
+    const consecutiveDeclinersCount = 0; // 需要歷史數據，暫時為 0
+    const breakdownStocksCount = Number(aggregate.breakdown_stocks_count || 0);
+    const volumeDryStocksCount = Number(aggregate.volume_dry_stocks_count || 0);
     const topVolume = Number(t?.volume || 0);
     const topPrice = Number(t?.close_price || 0);
     const topPricePrev = Number(t?.prior_close || 0);
@@ -536,6 +788,7 @@ app.get('/api/returns/statistics', async (req, res) => {
         advancers,
         decliners,
         unchanged,
+        unchangedCount: unchanged,
         avgReturn,
         risingStocks: advancers,
         topStock: t ? t.symbol : 'N/A',
@@ -546,9 +799,17 @@ app.get('/api/returns/statistics', async (req, res) => {
         newHigh52w: newHighStocks,
         greater2Count: greater2,
         lessNeg2Count: lessNeg2,
+        limitUpCount,
+        limitDownCount,
         adRatio: adRatio,
         trendPercent,
         medianReturn,
+        ma5Ratio,
+        ma5AboveCount,
+        ma5SampleCount,
+        ma10Ratio,
+        ma10AboveCount,
+        ma10SampleCount,
         ma20Ratio,
         ma20TrendPercent,
         ma20AboveCount,
@@ -557,6 +818,36 @@ app.get('/api/returns/statistics', async (req, res) => {
         ma60TrendPercent,
         ma60AboveCount,
         ma60SampleCount,
+        ma120Ratio,
+        ma120AboveCount,
+        ma120SampleCount,
+        ma240Ratio,
+        ma240AboveCount,
+        ma240SampleCount,
+        goldenCrossCount,
+        goldenCross5_20,
+        goldenCross10_60,
+        deathCrossCount,
+        deathCross5_20,
+        deathCross10_60,
+        bullishAlignmentCount,
+        bearishAlignmentCount,
+        adlValue,
+        adlChange,
+        gain5PlusCount,
+        gain2To5Count,
+        gain0To2Count,
+        loss5PlusCount,
+        loss2To5Count,
+        loss0To2Count,
+        activeStocksCount,
+        inactiveStocksCount,
+        heavyLosersCount,
+        severeDeclinersCount,
+        crashStocksCount,
+        consecutiveDeclinersCount,
+        breakdownStocksCount,
+        volumeDryStocksCount,
         topVolume,
         topPrice,
         topPricePrev,
@@ -568,6 +859,10 @@ app.get('/api/returns/statistics', async (req, res) => {
         totalCount,
         upVolume,
         downVolume,
+        totalVolume,
+        totalValue,
+        valueChange,
+        avgValue20,
         highVolatilityCount: highVolCount,
       },
       asOfDate: isoDate,
@@ -966,6 +1261,7 @@ function fallbackStats() {
     advancers: 0,
     decliners: 0,
     unchanged: 0,
+    unchangedCount: 0,
     avgReturn: 0,
     risingStocks: 0,
     topStock: 'N/A',
@@ -976,6 +1272,8 @@ function fallbackStats() {
     newHigh52w: 0,
     greater2Count: 0,
     lessNeg2Count: 0,
+    limitUpCount: 0,
+    limitDownCount: 0,
     adRatio: null,
     trendPercent: 0,
     medianReturn: 0,
@@ -996,6 +1294,10 @@ function fallbackStats() {
     totalCount: 0,
     upVolume: 0,
     downVolume: 0,
+    totalVolume: 0,
+    totalValue: 0,
+    valueChange: 0,
+    avgValue20: 0,
     highVolatilityCount: 0,
   };
 }
