@@ -70,6 +70,17 @@ const formatRatio = (value, digits = 2) => {
   return `${Number(value).toFixed(digits)}x`
 }
 
+const formatValue = (value, digits = 0) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '--'
+  const num = Number(value)
+  if (num >= 10000) {
+    return (num / 10000).toFixed(2) + '兆'
+  } else if (num >= 1000) {
+    return (num / 1000).toFixed(1) + '千'
+  }
+  return num.toFixed(digits)
+}
+
 // 計算統計數據
 const s = computed(() => props.stats || {})
 const totalCount = computed(() => Number(s.value.totalCount || 0))
@@ -196,6 +207,63 @@ const handleDragEnd = () => {
                   </div>
                 </div>
 
+                <!-- 平盤股票數 -->
+                <div v-else-if="element.id === 'unchanged'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-minus"></i></div>
+                    <div class="stat-label">平盤股票數</div>
+                  </div>
+                  <div class="stat-value">{{ formatNumber(s.unchangedCount ?? s.unchanged ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">平盤：{{ formatNumber(s.unchangedCount ?? s.unchanged ?? 0) }}</span>
+                    <span class="muted">佔比：{{ formatPercent((s.unchangedCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 漲停/跌停股票數 -->
+                <div v-else-if="element.id === 'limitUpDown'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-line-up"></i></div>
+                    <div class="stat-label">漲停/跌停股票數</div>
+                  </div>
+                  <div class="stat-value" style="display: flex; gap: 12px; align-items: baseline;">
+                    <span style="color: #ef4444;">{{ formatNumber(s.limitUpCount ?? 0) }}</span>
+                    <span style="font-size: 0.8em; color: #888;">/</span>
+                    <span style="color: #22c55e;">{{ formatNumber(s.limitDownCount ?? 0) }}</span>
+                  </div>
+                  <div class="stat-subinfo">
+                    <span style="color: #ef4444;">
+                      <span class="dot" style="background:#ef4444"></span>
+                      漲停：{{ formatPercent((s.limitUpCount ?? 0) / totalCount * 100, 1) }}
+                    </span>
+                    <span style="color: #22c55e;">
+                      <span class="dot" style="background:#22c55e"></span>
+                      跌停：{{ formatPercent((s.limitDownCount ?? 0) / totalCount * 100, 1) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 成交金額 -->
+                <div v-else-if="element.id === 'totalValue'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div>
+                    <div class="stat-label">成交金額</div>
+                  </div>
+                  <div class="stat-value">
+                    {{ formatNumber(s.totalValue ?? 0, 2) }} 千億
+                  </div>
+                  <div class="stat-subinfo">
+                    <span :style="{ color: (s.valueChange ?? 0) >= 0 ? '#ef4444' : '#22c55e' }">
+                      <span class="dot" :style="{ background: (s.valueChange ?? 0) >= 0 ? '#ef4444' : '#22c55e' }"></span>
+                      較昨日：{{ (s.valueChange ?? 0) >= 0 ? '+' : '' }}{{ formatPercent(s.valueChange ?? 0, 1) }}
+                    </span>
+                    <span class="muted">
+                      {{ (s.totalValue ?? 0) > (s.avgValue20 ?? 0) ? '放量' : '縮量' }}
+                      {{ formatPercent(((s.totalValue ?? 0) / (s.avgValue20 ?? 1) - 1) * 100, 0) }}
+                    </span>
+                  </div>
+                </div>
+
                 <!-- 本月最佳報酬 -->
                 <div v-else-if="element.id === 'topReturn'">
                   <div class="stat-header">
@@ -234,6 +302,45 @@ const handleDragEnd = () => {
                   </div>
                 </div>
 
+                <!-- 站上 MA5 比例 -->
+                <div v-else-if="element.id === 'ma5'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                    <div class="stat-label">站上 MA5 比例</div>
+                  </div>
+                  <div class="stat-value">{{ formatPercent(s.ma5Ratio ?? 0, 1) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">站上：{{ formatNumber(s.ma5AboveCount ?? 0) }}</span>
+                    <span class="muted">樣本：{{ formatNumber(s.ma5SampleCount ?? 0) }}</span>
+                  </div>
+                </div>
+
+                <!-- 站上 MA10 比例 -->
+                <div v-else-if="element.id === 'ma10'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                    <div class="stat-label">站上 MA10 比例</div>
+                  </div>
+                  <div class="stat-value">{{ formatPercent(s.ma10Ratio ?? 0, 1) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">站上：{{ formatNumber(s.ma10AboveCount ?? 0) }}</span>
+                    <span class="muted">樣本：{{ formatNumber(s.ma10SampleCount ?? 0) }}</span>
+                  </div>
+                </div>
+
+                <!-- 站上 MA20 比例 -->
+                <div v-else-if="element.id === 'ma20'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-area"></i></div>
+                    <div class="stat-label">站上 MA20 比例</div>
+                  </div>
+                  <div class="stat-value">{{ formatPercent(s.ma20Ratio, 1) }}</div>
+                  <div class="stat-subinfo">
+                    <span><span class="dot" style="background:#22c55e"></span>站上：{{ formatNumber(s.ma20AboveCount) }}</span>
+                    <span class="muted">樣本：{{ formatNumber(s.ma20SampleCount) }}</span>
+                  </div>
+                </div>
+
                 <!-- 站上 MA60 比例 -->
                 <div v-else-if="element.id === 'ma60'">
                   <div class="stat-header">
@@ -247,16 +354,93 @@ const handleDragEnd = () => {
                   </div>
                 </div>
 
-                <!-- 站上 MA20 比例 -->
-                <div v-else-if="element.id === 'ma20'">
+                <!-- 站上 MA120 比例 -->
+                <div v-else-if="element.id === 'ma120'">
                   <div class="stat-header">
-                    <div class="stat-icon"><i class="fas fa-chart-area"></i></div>
-                    <div class="stat-label">站上 MA20 比例（近似）</div>
+                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                    <div class="stat-label">站上 MA120 比例</div>
                   </div>
-                  <div class="stat-value">{{ formatPercent(s.ma20Ratio, 1) }}</div>
+                  <div class="stat-value">{{ formatPercent(s.ma120Ratio ?? 0, 1) }}</div>
                   <div class="stat-subinfo">
-                    <span><span class="dot" style="background:#22c55e"></span>站上：{{ formatNumber(s.ma20AboveCount) }}</span>
-                    <span class="muted">樣本：{{ formatNumber(s.ma20SampleCount) }}</span>
+                    <span class="muted">站上：{{ formatNumber(s.ma120AboveCount ?? 0) }}</span>
+                    <span class="muted">樣本：{{ formatNumber(s.ma120SampleCount ?? 0) }}</span>
+                  </div>
+                </div>
+
+                <!-- 站上 MA240 比例 -->
+                <div v-else-if="element.id === 'ma240'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                    <div class="stat-label">站上 MA240 比例</div>
+                  </div>
+                  <div class="stat-value">{{ formatPercent(s.ma240Ratio ?? 0, 1) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">站上：{{ formatNumber(s.ma240AboveCount ?? 0) }}</span>
+                    <span class="muted">樣本：{{ formatNumber(s.ma240SampleCount ?? 0) }}</span>
+                  </div>
+                </div>
+
+                <!-- 黃金交叉股票數 -->
+                <div v-else-if="element.id === 'goldenCross'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-sparkles"></i></div>
+                    <div class="stat-label">黃金交叉股票數</div>
+                  </div>
+                  <div class="stat-value">{{ formatNumber(s.goldenCrossCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span style="color: #ef4444;">
+                      <span class="dot" style="background:#ef4444"></span>
+                      MA5↑MA20：{{ formatNumber(s.goldenCross5_20 ?? s.golden_cross_5_20 ?? 0) }}
+                    </span>
+                    <span style="color: #f59e0b;">
+                      <span class="dot" style="background:#f59e0b"></span>
+                      MA10↑MA60：{{ formatNumber(s.goldenCross10_60 ?? s.golden_cross_10_60 ?? 0) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 死亡交叉股票數 -->
+                <div v-else-if="element.id === 'deathCross'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-skull-crossbones"></i></div>
+                    <div class="stat-label">死亡交叉股票數</div>
+                  </div>
+                  <div class="stat-value">{{ formatNumber(s.deathCrossCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span style="color: #22c55e;">
+                      <span class="dot" style="background:#22c55e"></span>
+                      MA5↓MA20：{{ formatNumber(s.deathCross5_20 ?? s.death_cross_5_20 ?? 0) }}
+                    </span>
+                    <span style="color: #10b981;">
+                      <span class="dot" style="background:#10b981"></span>
+                      MA10↓MA60：{{ formatNumber(s.deathCross10_60 ?? s.death_cross_10_60 ?? 0) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 多頭排列股票數 -->
+                <div v-else-if="element.id === 'bullishAlignment'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-arrow-trend-up"></i></div>
+                    <div class="stat-label">多頭排列股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #ef4444;">{{ formatNumber(s.bullishAlignmentCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">MA5 &gt; MA10 &gt; MA20 &gt; MA60</span>
+                    <span class="muted">佔比：{{ formatPercent((s.bullishAlignmentCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 空頭排列股票數 -->
+                <div v-else-if="element.id === 'bearishAlignment'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-arrow-trend-down"></i></div>
+                    <div class="stat-label">空頭排列股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #22c55e;">{{ formatNumber(s.bearishAlignmentCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">MA5 &lt; MA10 &lt; MA20 &lt; MA60</span>
+                    <span class="muted">佔比：{{ formatPercent((s.bearishAlignmentCount ?? 0) / totalCount * 100, 1) }}</span>
                   </div>
                 </div>
 
@@ -273,29 +457,102 @@ const handleDragEnd = () => {
                   </div>
                 </div>
 
-                <!-- 成交量中位數 -->
-                <div v-else-if="element.id === 'volMedian'">
+                <!-- 騰落線（ADL） -->
+                <div v-else-if="element.id === 'advanceDeclineLine'">
                   <div class="stat-header">
-                    <div class="stat-icon"><i class="fas fa-bolt"></i></div>
-                    <div class="stat-label">成交量中位數</div>
+                    <div class="stat-icon"><i class="fas fa-chart-area"></i></div>
+                    <div class="stat-label">騰落線（ADL）</div>
                   </div>
-                  <div class="stat-value">{{ formatNumber(s.medianVolume) }}</div>
+                  <div class="stat-value" :style="{ color: (s.adlValue ?? 0) >= 0 ? '#ef4444' : '#22c55e' }">
+                    {{ (s.adlValue ?? 0) >= 0 ? '+' : '' }}{{ formatNumber(s.adlValue ?? 0) }}
+                  </div>
                   <div class="stat-subinfo">
-                    <span class="muted">單位：張</span>
-                    <span class="muted">樣本：{{ formatNumber(totalCount) }}</span>
+                    <span class="muted">累計上漲 - 下跌</span>
+                    <span :style="{ color: (s.adlChange ?? 0) >= 0 ? '#ef4444' : '#22c55e' }">
+                      較昨日：{{ (s.adlChange ?? 0) >= 0 ? '+' : '' }}{{ formatNumber(s.adlChange ?? 0) }}
+                    </span>
                   </div>
                 </div>
 
-                <!-- 上漲成交量 / 下跌成交量 比 -->
-                <div v-else-if="element.id === 'upDownVol'">
+                <!-- 新高/新低股票數 -->
+                <div v-else-if="element.id === 'newHighLow'">
                   <div class="stat-header">
-                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
-                    <div class="stat-label">量能比</div>
+                    <div class="stat-icon"><i class="fas fa-mountain"></i></div>
+                    <div class="stat-label">新高/新低股票數</div>
                   </div>
-                  <div class="stat-value">{{ formatRatio(s.upDownVolumeRatio, 2) }}</div>
+                  <div class="stat-value" style="display: flex; gap: 12px; align-items: baseline;">
+                    <span style="color: #ef4444;">{{ formatNumber(s.newHighStocks ?? 0) }}</span>
+                    <span style="font-size: 0.8em; color: #888;">/</span>
+                    <span style="color: #22c55e;">{{ formatNumber(s.newLowStocks ?? 0) }}</span>
+                  </div>
                   <div class="stat-subinfo">
-                    <span class="muted">上漲量：{{ formatNumber(s.upVolume) }}</span>
-                    <span class="muted">下跌量：{{ formatNumber(s.downVolume) }}</span>
+                    <span style="color: #ef4444;">
+                      <span class="dot" style="background:#ef4444"></span>
+                      新高：{{ formatNumber(s.newHighStocks ?? 0) }}
+                    </span>
+                    <span :style="{ color: (s.newHighNet ?? 0) >= 0 ? '#ef4444' : '#22c55e' }">
+                      <span class="dot" :style="{ background: (s.newHighNet ?? 0) >= 0 ? '#ef4444' : '#22c55e' }"></span>
+                      淨值：{{ (s.newHighNet ?? 0) >= 0 ? '+' : '' }}{{ formatNumber(s.newHighNet ?? 0) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 上漲幅度分布 -->
+                <div v-else-if="element.id === 'gainDistribution'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-bar"></i></div>
+                    <div class="stat-label">上漲幅度分布</div>
+                  </div>
+                  <div class="stat-value">{{ formatNumber(s.advancersCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span style="color: #dc2626;">
+                      <span class="dot" style="background:#dc2626"></span>
+                      &gt;5%：{{ formatNumber(s.gain5PlusCount ?? 0) }}
+                    </span>
+                    <span style="color: #f59e0b;">
+                      <span class="dot" style="background:#f59e0b"></span>
+                      2-5%：{{ formatNumber(s.gain2To5Count ?? 0) }}
+                    </span>
+                    <span style="color: #fbbf24;">
+                      <span class="dot" style="background:#fbbf24"></span>
+                      0-2%：{{ formatNumber(s.gain0To2Count ?? 0) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 下跌幅度分布 -->
+                <div v-else-if="element.id === 'lossDistribution'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-chart-bar"></i></div>
+                    <div class="stat-label">下跌幅度分布</div>
+                  </div>
+                  <div class="stat-value">{{ formatNumber(s.declinersCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span style="color: #059669;">
+                      <span class="dot" style="background:#059669"></span>
+                      &lt;-5%：{{ formatNumber(s.loss5PlusCount ?? 0) }}
+                    </span>
+                    <span style="color: #10b981;">
+                      <span class="dot" style="background:#10b981"></span>
+                      -5~-2%：{{ formatNumber(s.loss2To5Count ?? 0) }}
+                    </span>
+                    <span style="color: #34d399;">
+                      <span class="dot" style="background:#34d399"></span>
+                      -2~0%：{{ formatNumber(s.loss0To2Count ?? 0) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 市場參與度 -->
+                <div v-else-if="element.id === 'marketParticipation'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                    <div class="stat-label">市場參與度</div>
+                  </div>
+                  <div class="stat-value">{{ formatPercent((s.activeStocksCount ?? 0) / totalCount * 100, 1) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">活躍：{{ formatNumber(s.activeStocksCount ?? 0) }}</span>
+                    <span class="muted">冷清：{{ formatNumber(s.inactiveStocksCount ?? 0) }}</span>
                   </div>
                 </div>
 
@@ -307,8 +564,86 @@ const handleDragEnd = () => {
                   </div>
                   <div class="stat-value">{{ formatPercent(s.hiVolatilityRatio, 1) }}</div>
                   <div class="stat-subinfo">
-                    <span class="muted">波動≥0.8：{{ formatNumber(s.highVolatilityCount) }}</span>
+                    <span class="muted">波動≥5%：{{ formatNumber(s.highVolatilityCount) }}</span>
                     <span class="muted">樣本：{{ formatNumber(totalCount) }}</span>
+                  </div>
+                </div>
+
+                <!-- 跌幅超過 5% 股票數 -->
+                <div v-else-if="element.id === 'heavyLosers'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="stat-label">跌幅超過 5% 股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #f59e0b;">{{ formatNumber(s.heavyLosersCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">跌幅 &gt; 5%</span>
+                    <span class="muted">佔比：{{ formatPercent((s.heavyLosersCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 跌幅超過 7% 股票數 -->
+                <div v-else-if="element.id === 'severeDecliners'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-exclamation-circle"></i></div>
+                    <div class="stat-label">跌幅超過 7% 股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #ef4444;">{{ formatNumber(s.severeDeclinersCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">跌幅 &gt; 7%</span>
+                    <span class="muted">佔比：{{ formatPercent((s.severeDeclinersCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 跌幅超過 10% 股票數 -->
+                <div v-else-if="element.id === 'crashStocks'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-bomb"></i></div>
+                    <div class="stat-label">跌幅超過 10% 股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #dc2626;">{{ formatNumber(s.crashStocksCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">跌幅 &gt; 10%（重挫）</span>
+                    <span class="muted">佔比：{{ formatPercent((s.crashStocksCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 連續下跌股票數 -->
+                <div v-else-if="element.id === 'consecutiveDecliners'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-arrow-trend-down"></i></div>
+                    <div class="stat-label">連續下跌股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #22c55e;">{{ formatNumber(s.consecutiveDeclinersCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">連續 3 日下跌</span>
+                    <span class="muted">佔比：{{ formatPercent((s.consecutiveDeclinersCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 破底股票數 -->
+                <div v-else-if="element.id === 'breakdownStocks'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-mountain"></i></div>
+                    <div class="stat-label">破底股票數</div>
+                  </div>
+                  <div class="stat-value" style="color: #10b981;">{{ formatNumber(s.breakdownStocksCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">跌破 MA60</span>
+                    <span class="muted">佔比：{{ formatPercent((s.breakdownStocksCount ?? 0) / totalCount * 100, 1) }}</span>
+                  </div>
+                </div>
+
+                <!-- 成交量萎縮股票數 -->
+                <div v-else-if="element.id === 'volumeDryStocks'">
+                  <div class="stat-header">
+                    <div class="stat-icon"><i class="fas fa-droplet-slash"></i></div>
+                    <div class="stat-label">成交量萎縮股票數</div>
+                  </div>
+                  <div class="stat-value">{{ formatNumber(s.volumeDryStocksCount ?? 0) }}</div>
+                  <div class="stat-subinfo">
+                    <span class="muted">量 &lt; 20日均量 50%</span>
+                    <span class="muted">佔比：{{ formatPercent((s.volumeDryStocksCount ?? 0) / totalCount * 100, 1) }}</span>
                   </div>
                 </div>
               </div>
