@@ -13,6 +13,7 @@ import LoginModal from './components/Auth/LoginModal.vue'
 import RegisterModal from './components/Auth/RegisterModal.vue'
 import UserProfile from './components/UserProfile.vue'
 import Pricing from './components/Pricing.vue'
+import StockQuery from './components/StockQuery.vue'
 
 // Shared reactive state
 const currentData = ref([])
@@ -367,6 +368,10 @@ function onUpdatePeriod(p){
 
       <div v-show="currentView==='pricing'">
         <Pricing />
+      </div>
+
+      <div v-show="currentView==='stockQuery'">
+        <StockQuery />
       </div>
     </div>
   </main>
