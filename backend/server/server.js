@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.js';
 import paymentRoutes from './routes/payment.js';
 import notificationRoutes from './routes/notifications.js';
 import createStockRoutes from './routes/stocks.js';
+import createReturnsRoutes from './routes/returns.js';
 import { pool } from './pool.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +28,30 @@ process.on('uncaughtException', (err) => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Configure CORS to allow requests from frontend
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests from any origin in development, specific origins in production
+    if (process.env.NODE_ENV === 'production') {
+      const allowedOrigins = [
+        'https://quantgems.com',
+        'https://www.quantgems.com',
+        'https://quantgems.vercel.app'
+      ];
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    } else {
+      // Allow all origins in development
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // For ECPay form data
 
@@ -49,6 +73,7 @@ app.use(passport.session());
 // PostgreSQL pool is imported from ./pool.js
 
 const stockRoutes = createStockRoutes(pool);
+const returnsRoutes = createReturnsRoutes(pool);
 
 // 認證路由
 app.use('/api/auth', authRoutes);
@@ -58,6 +83,9 @@ app.use('/api/payment', paymentRoutes);
 
 // 通知路由
 app.use('/api/notifications', notificationRoutes);
+
+// 股票報酬率路由
+app.use('/api/returns', returnsRoutes);
 
 // 股票資料路由
 app.use('/api/stocks', stockRoutes);
@@ -128,21 +156,21 @@ function parseSymbolsParam(raw) {
 async function resolveStockDate(client, requestedDate) {
   const isoRequested = toIsoDate(requestedDate);
   if (isoRequested) {
-    const check = await client.query('SELECT COUNT(*) AS cnt FROM stock_returns WHERE date = $1', [isoRequested]);
+    const check = await client.query('SELECT COUNT(*) AS cnt FROM tw_stock_returns WHERE date = $1', [isoRequested]);
     if (Number(check.rows[0]?.cnt || 0) > 0) return isoRequested;
-    const fallback = await client.query('SELECT MAX(date) AS latest FROM stock_returns WHERE date <= $1', [isoRequested]);
+    const fallback = await client.query('SELECT MAX(date) AS latest FROM tw_stock_returns WHERE date <= $1', [isoRequested]);
     if (fallback.rows[0]?.latest) return fallback.rows[0].latest;
 
-    const priceExact = await client.query('SELECT COUNT(*) AS cnt FROM stock_prices WHERE date = $1', [isoRequested]);
+    const priceExact = await client.query('SELECT COUNT(*) AS cnt FROM tw_stock_prices WHERE date = $1', [isoRequested]);
     if (Number(priceExact.rows[0]?.cnt || 0) > 0) return isoRequested;
 
-    const priceFallback = await client.query('SELECT MAX(date) AS latest FROM stock_prices WHERE date <= $1', [isoRequested]);
+    const priceFallback = await client.query('SELECT MAX(date) AS latest FROM tw_stock_prices WHERE date <= $1', [isoRequested]);
     if (priceFallback.rows[0]?.latest) return priceFallback.rows[0].latest;
   }
-  const latestReturns = await client.query('SELECT MAX(date) AS latest FROM stock_returns');
+  const latestReturns = await client.query('SELECT MAX(date) AS latest FROM tw_stock_returns');
   if (latestReturns.rows[0]?.latest) return latestReturns.rows[0].latest;
 
-  const latestPrices = await client.query('SELECT MAX(date) AS latest FROM stock_prices');
+  const latestPrices = await client.query('SELECT MAX(date) AS latest FROM tw_stock_prices');
   return latestPrices.rows[0]?.latest || null;
 }
 
@@ -194,7 +222,7 @@ app.get('/api/returns/statistics', async (req, res) => {
       WITH twii_volume AS (
         SELECT
           COALESCE(volume, 0)::numeric AS market_volume
-        FROM stock_prices
+        FROM tw_stock_prices
         WHERE symbol = '^TWII'
           AND date = $1::date
         LIMIT 1
@@ -207,9 +235,9 @@ app.get('/api/returns/statistics', async (req, res) => {
           COALESCE(sp.volume, 0)::numeric AS volume,
           COALESCE(sp.close_price, 0)::numeric AS close_price,
           ROW_NUMBER() OVER (PARTITION BY r.symbol ORDER BY r.date DESC) AS rn
-        FROM stock_returns r
-        LEFT JOIN stock_prices sp ON sp.symbol = r.symbol AND sp.date = r.date
-        LEFT JOIN stock_symbols s ON s.symbol = r.symbol
+        FROM tw_stock_returns r
+        LEFT JOIN tw_stock_prices sp ON sp.symbol = r.symbol AND sp.date = r.date
+        LEFT JOIN tw_stock_symbols s ON s.symbol = r.symbol
         WHERE r.date <= $1::date
           AND (
             $2::text = 'all'
@@ -256,8 +284,8 @@ app.get('/api/returns/statistics', async (req, res) => {
             sp.symbol,
             sp.close_price,
             sp.date
-          FROM stock_prices sp
-          LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+          FROM tw_stock_prices sp
+          LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
           WHERE sp.date < $1::date
             AND (
               $2::text = 'all'
@@ -292,8 +320,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           COALESCE(sp.high_price, sp.close_price, 0)::numeric AS current_high,
           COALESCE(sp.close_price, 0)::numeric AS current_close,
           COALESCE(sp.low_price, sp.close_price, 0)::numeric AS current_low
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date = $1::date
           AND (
             $2::text = 'all'
@@ -304,8 +332,8 @@ app.get('/api/returns/statistics', async (req, res) => {
         SELECT
           sp.symbol,
           MAX(COALESCE(sp.high_price, sp.close_price, 0))::numeric AS high_52w
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '365 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -317,8 +345,8 @@ app.get('/api/returns/statistics', async (req, res) => {
         SELECT
           sp.symbol,
           MIN(COALESCE(sp.low_price, sp.close_price, 0))::numeric AS low_52w
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '365 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -331,8 +359,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           sp.symbol,
           AVG(COALESCE(sp.close_price, 0))::numeric AS ma60_value,
           COUNT(*) AS sample_count
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '59 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -345,8 +373,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           sp.symbol,
           AVG(COALESCE(sp.close_price, 0))::numeric AS ma5_value,
           COUNT(*) AS sample_count
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '4 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -359,8 +387,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           sp.symbol,
           AVG(COALESCE(sp.close_price, 0))::numeric AS ma10_value,
           COUNT(*) AS sample_count
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '9 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -373,8 +401,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           sp.symbol,
           AVG(COALESCE(sp.close_price, 0))::numeric AS ma20_value,
           COUNT(*) AS sample_count
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '19 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -387,8 +415,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           sp.symbol,
           AVG(COALESCE(sp.close_price, 0))::numeric AS ma120_value,
           COUNT(*) AS sample_count
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '119 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -401,8 +429,8 @@ app.get('/api/returns/statistics', async (req, res) => {
           sp.symbol,
           AVG(COALESCE(sp.close_price, 0))::numeric AS ma240_value,
           COUNT(*) AS sample_count
-        FROM stock_prices sp
-        LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+        FROM tw_stock_prices sp
+        LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
         WHERE sp.date BETWEEN $1::date - INTERVAL '239 days' AND $1::date
           AND (
             $2::text = 'all'
@@ -616,9 +644,9 @@ app.get('/api/returns/statistics', async (req, res) => {
           COALESCE(sp.close_price, 0)::numeric AS close_price,
           COALESCE(sp.volume, 0)::numeric AS volume,
           ROW_NUMBER() OVER (PARTITION BY r.symbol ORDER BY r.date DESC) AS rn
-        FROM stock_returns r
-        LEFT JOIN stock_prices sp ON sp.symbol = r.symbol AND sp.date = r.date
-        LEFT JOIN stock_symbols s ON s.symbol = r.symbol
+        FROM tw_stock_returns r
+        LEFT JOIN tw_stock_prices sp ON sp.symbol = r.symbol AND sp.date = r.date
+        LEFT JOIN tw_stock_symbols s ON s.symbol = r.symbol
         WHERE r.date <= $1::date
           AND (
             $2::text = 'all'
@@ -665,8 +693,8 @@ app.get('/api/returns/statistics', async (req, res) => {
             sp.symbol,
             sp.close_price,
             sp.date
-          FROM stock_prices sp
-          LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+          FROM tw_stock_prices sp
+          LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
           WHERE sp.date < $1::date
             AND (
               $2::text = 'all'
@@ -923,9 +951,9 @@ app.get('/api/returns/rankings', async (req, res) => {
           COALESCE(sp.close_price, 0)::numeric AS close_price,
           COALESCE(sp.volume, 0)::numeric AS volume,
           ROW_NUMBER() OVER (PARTITION BY r.symbol ORDER BY r.date DESC) AS rn
-        FROM stock_returns r
-        LEFT JOIN stock_prices sp ON sp.symbol = r.symbol AND sp.date = r.date
-        LEFT JOIN stock_symbols s ON s.symbol = r.symbol
+        FROM tw_stock_returns r
+        LEFT JOIN tw_stock_prices sp ON sp.symbol = r.symbol AND sp.date = r.date
+        LEFT JOIN tw_stock_symbols s ON s.symbol = r.symbol
         WHERE r.date <= $1::date
           AND (
             $2::text = 'all'
@@ -972,8 +1000,8 @@ app.get('/api/returns/rankings', async (req, res) => {
             sp.symbol,
             sp.close_price,
             sp.date
-          FROM stock_prices sp
-          LEFT JOIN stock_symbols s ON s.symbol = sp.symbol
+          FROM tw_stock_prices sp
+          LEFT JOIN tw_stock_symbols s ON s.symbol = sp.symbol
           WHERE sp.date < $1::date
             AND (
               $2::text = 'all'
@@ -1022,9 +1050,9 @@ app.get('/api/returns/rankings', async (req, res) => {
           s.industry
         FROM aggregated a
         LEFT JOIN prior_price pp ON pp.symbol = a.symbol
-        LEFT JOIN stock_prices sp ON sp.symbol = a.symbol AND sp.date = $1::date
-        LEFT JOIN stock_prices prev ON prev.symbol = a.symbol AND prev.date = $1::date - ($3::int) * INTERVAL '1 day'
-        LEFT JOIN stock_symbols s ON s.symbol = a.symbol
+        LEFT JOIN tw_stock_prices sp ON sp.symbol = a.symbol AND sp.date = $1::date
+        LEFT JOIN tw_stock_prices prev ON prev.symbol = a.symbol AND prev.date = $1::date - ($3::int) * INTERVAL '1 day'
+        LEFT JOIN tw_stock_symbols s ON s.symbol = a.symbol
       )
       SELECT * FROM final_data
       ${whereClause}
@@ -1117,7 +1145,7 @@ app.get('/api/returns/comparison', async (req, res) => {
           sp.volume,
           REGEXP_REPLACE(UPPER(sp.symbol), '\\.(TW|TWO)$', '', 'i') AS normalized,
           ROW_NUMBER() OVER (PARTITION BY sp.symbol ORDER BY sp.date DESC) AS rn
-        FROM stock_prices sp
+        FROM tw_stock_prices sp
         WHERE sp.date <= $1::date
           AND EXISTS (
             SELECT 1 FROM input_symbols i 
@@ -1139,7 +1167,7 @@ app.get('/api/returns/comparison', async (req, res) => {
           r.symbol, 
           r.daily_return,
           REGEXP_REPLACE(UPPER(r.symbol), '\\.(TW|TWO)$', '', 'i') AS normalized
-        FROM stock_returns r
+        FROM tw_stock_returns r
         WHERE r.date = $1::date
           AND EXISTS (
             SELECT 1 FROM input_symbols i 
@@ -1151,7 +1179,7 @@ app.get('/api/returns/comparison', async (req, res) => {
           r.symbol,
           STDDEV_POP(r.daily_return) AS volatility,
           REGEXP_REPLACE(UPPER(r.symbol), '\\.(TW|TWO)$', '', 'i') AS normalized
-        FROM stock_returns r
+        FROM tw_stock_returns r
         WHERE r.date BETWEEN ($1::date - INTERVAL '30 days') AND $1::date
           AND EXISTS (
             SELECT 1 FROM input_symbols i 
@@ -1166,7 +1194,7 @@ app.get('/api/returns/comparison', async (req, res) => {
           s.short_name, 
           s.market,
           REGEXP_REPLACE(UPPER(s.symbol), '\\.(TW|TWO)$', '', 'i') AS normalized
-        FROM stock_symbols s
+        FROM tw_stock_symbols s
         WHERE EXISTS (
           SELECT 1 FROM input_symbols i 
           WHERE REGEXP_REPLACE(UPPER(s.symbol), '\\.(TW|TWO)$', '', 'i') = i.normalized
