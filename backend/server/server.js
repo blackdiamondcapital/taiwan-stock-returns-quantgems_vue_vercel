@@ -30,24 +30,7 @@ const PORT = process.env.PORT || 3000;
 
 // Configure CORS to allow requests from frontend
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests from any origin in development, specific origins in production
-    if (process.env.NODE_ENV === 'production') {
-      const allowedOrigins = [
-        'https://quantgems.com',
-        'https://www.quantgems.com',
-        'https://quantgems.vercel.app'
-      ];
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    } else {
-      // Allow all origins in development
-      callback(null, true);
-    }
-  },
+  origin: true, // Allow all origins for now
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
