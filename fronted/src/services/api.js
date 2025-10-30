@@ -120,15 +120,28 @@ export async function fetchStockPriceHistory(symbol, period = '1M') {
     
     if (json?.data && Array.isArray(json.data) && json.data.length > 0) {
       console.log('Real data loaded:', json.data.length, 'records');
+      console.log('First raw item from API:', json.data[0]);
+      
       // Transform backend data to chart format if needed
-      return json.data.map(item => ({
-        time: item.date || item.time,
-        open: parseFloat(item.open),
-        high: parseFloat(item.high),
-        low: parseFloat(item.low),
-        close: parseFloat(item.close),
-        volume: parseInt(item.volume || item.vol || 0)
-      }));
+      const transformed = json.data.map(item => {
+        const open = parseFloat(item.open || 0)
+        const high = parseFloat(item.high || 0)
+        const low = parseFloat(item.low || 0)
+        const close = parseFloat(item.close || 0)
+        const volume = parseInt(item.volume || 0)
+        
+        return {
+          time: item.date || item.time,
+          open,
+          high,
+          low,
+          close,
+          volume
+        }
+      });
+      
+      console.log('First transformed item:', transformed[0]);
+      return transformed;
     }
     
     console.warn('No data from API for', symbol, period);
