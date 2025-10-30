@@ -5,6 +5,7 @@ import { fetchStockPriceHistory } from '../services/api'
 
 const props = defineProps({
   symbol: { type: String, required: true },
+  stockName: { type: String, default: '' },
   period: { type: String, default: '1D' }
 })
 
@@ -188,12 +189,31 @@ function renderChart() {
       // Keep order [open, close, low, high]
       ha.push([Number(haOpen.toFixed(4)), Number(haClose.toFixed(4)), Number(haLow.toFixed(4)), Number(haHigh.toFixed(4))])
     }
+    console.log('Heikin Ashi OHLC:', ha) // Add debug logging
     return ha
   }
 
-  const standardOhlc = chartData.value.map(d => [d.open, d.close, d.low, d.high])
+  // Log raw chart data
+  if (chartData.value.length > 0) {
+    console.log('=== Chart Component Debug ===');
+    console.log('First chartData item:', chartData.value[0]);
+  }
+  
+  // ECharts candlestick expects: [open, close, low, high]
+  const standardOhlc = chartData.value.map(d => {
+    const ohlc = [d.open, d.close, d.low, d.high]
+    console.log('Building OHLC:', { raw: d, ohlc })
+    return ohlc
+  })
+  console.log('Standard OHLC:', standardOhlc) // Add debug logging
   const ohlc = chartMode.value === 'heikin' ? buildHeikinAshi(chartData.value) : standardOhlc
   const volumes = chartData.value.map(d => d.volume)
+  
+  // Log constructed OHLC
+  if (ohlc.length > 0) {
+    console.log('First OHLC array [open, close, low, high]:', ohlc[0]);
+    console.log('Expected format: [open, close, low, high]');
+  }
   
   // Calculate MA lines (based on close price index=1)
   function calculateMA(data, dayCount) {
@@ -352,13 +372,13 @@ function renderChart() {
     legend: [
       {
         data: [`MA${maParams.value.ma1}`, `MA${maParams.value.ma2}`, `MA${maParams.value.ma3}`, `MA${maParams.value.ma4}`, `MA${maParams.value.ma5}`],
-        top: '8%',
+        top: 5,
         left: 'center',
         orient: 'horizontal',
         itemGap: 20,
-        backgroundColor: 'rgba(15, 23, 42, 0.8)',
+        backgroundColor: 'transparent',
         borderRadius: 6,
-        padding: [8, 16],
+        padding: [4, 12],
         textStyle: {
           color: 'rgba(226, 232, 240, 0.9)',
           fontSize: 11
@@ -437,22 +457,50 @@ function renderChart() {
       },
       formatter: function (params) {
         let result = `${params[0].axisValue}<br/>`
-        const candleData = params[0].data
-        if (candleData) {
-          // data format: [open, close, low, high]
-          result += `開盤: ${candleData[0]}<br/>`
-          result += `收盤: ${candleData[1]}<br/>`
-          result += `最低: ${candleData[2]}<br/>`
-          result += `最高: ${candleData[3]}<br/>`
-        }
-        for (let i = 1; i < params.length - 1; i++) {
-          if (params[i].value !== '-') {
-            result += `${params[i].seriesName}: ${params[i].value}<br/>`
+        
+        // Find the candlestick series
+        const candleParam = params.find(p => p.seriesType === 'candlestick')
+        console.log('=== Tooltip Debug ===')
+        console.log('candleParam:', candleParam)
+        console.log('candleParam.value:', candleParam?.value)
+        console.log('candleParam.data:', candleParam?.data)
+        
+        if (candleParam) {
+          // Try both value and data
+          const dataArray = candleParam.value || candleParam.data
+          console.log('Using dataArray:', dataArray)
+          
+          if (dataArray && Array.isArray(dataArray) && dataArray.length >= 5) {
+            // ECharts candlestick format in tooltip: [?, open, close, low, high]
+            // The first element appears to be an index or other value, actual OHLC starts at index 1
+            const open = Number(dataArray[1]).toFixed(2)
+            const close = Number(dataArray[2]).toFixed(2)
+            const low = Number(dataArray[3]).toFixed(2)
+            const high = Number(dataArray[4]).toFixed(2)
+            
+            console.log('Parsed OHLC:', { open, close, low, high })
+            
+            result += `開盤: ${open}<br/>`
+            result += `收盤: ${close}<br/>`
+            result += `最低: ${low}<br/>`
+            result += `最高: ${high}<br/>`
           }
         }
-        if (params[params.length - 1]) {
-          result += `成交量: ${Number(params[params.length - 1].value).toLocaleString()}`
+        
+        // Add MA lines
+        for (let i = 0; i < params.length; i++) {
+          const param = params[i]
+          if (param.seriesType === 'line' && param.value !== '-' && param.value !== null && param.value !== undefined) {
+            result += `${param.seriesName}: ${Number(param.value).toFixed(2)}<br/>`
+          }
         }
+        
+        // Add volume (last series, type: 'bar')
+        const volumeParam = params.find(p => p.seriesType === 'bar')
+        if (volumeParam && volumeParam.value !== undefined) {
+          result += `成交量: ${Number(volumeParam.value).toLocaleString()}`
+        }
+        
         return result
       }
     },
@@ -463,7 +511,7 @@ function renderChart() {
       {
         left: '5%',
         right: '8%',
-        top: 40,
+        top: 50,
         height: showKD.value || showMACD.value ? '38%' : '63%'
       },
       {
@@ -553,10 +601,7 @@ function renderChart() {
       {
         scale: true,
         splitArea: {
-          show: true,
-          areaStyle: {
-            color: ['rgba(100, 200, 255, 0.03)', 'rgba(15, 23, 42, 0.1)']
-          }
+          show: false
         },
         axisLine: { 
           lineStyle: { color: 'rgba(100, 200, 255, 0.3)' } 
@@ -836,11 +881,16 @@ function changePeriod(key) {
   loadChartData()
 }
 
-watch(() => props.symbol, () => {
-  if (props.symbol) {
+watch(() => props.symbol, (newSymbol, oldSymbol) => {
+  if (newSymbol && newSymbol !== oldSymbol) {
+    // Reset to default period when symbol changes
+    selectedPeriodKey.value = resolveInitialKey(props.period)
+    // Clear existing data
+    chartData.value = []
+    // Load new data
     loadChartData()
   }
-})
+}, { immediate: false })
 
 // Watch for data changes and render chart
 watch(() => chartData.value.length, (newLen) => {
@@ -916,44 +966,65 @@ onUnmounted(() => {
 <template>
   <div class="stock-chart">
     <div class="chart-header">
-      <!-- 標題列 -->
-      <div class="chart-title">
-        <i class="fas fa-chart-candlestick"></i>
-        <span>{{ symbol }} {{ chartMode === 'heikin' ? '神奇K線圖' : 'K線圖' }}</span>
+      <div class="header-row">
+        <!-- 標題列 -->
+        <div class="chart-title">
+          <i class="fas fa-chart-candlestick"></i>
+          <span>{{ symbol }}{{ stockName ? ' ' + stockName : '' }} {{ chartMode === 'heikin' ? '神奇K線圖' : 'K線圖' }}</span>
+        </div>
+        
+        <!-- 右側控制按鈕 -->
+        <div class="header-actions">
+          <button 
+            class="action-icon-btn" 
+            @click="toggleFullscreen"
+            :title="isFullscreen ? '退出全螢幕' : '全螢幕'"
+          >
+            <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+          </button>
+          
+          <button 
+            v-show="!controlPanelOpen" 
+            class="action-icon-btn" 
+            @click="toggleControlPanel"
+            title="圖表控制"
+          >
+            <i class="fas fa-cog"></i>
+          </button>
+        </div>
       </div>
       
       <!-- 時間週期控制區 -->
       <div class="frequency-controls">
-        <div class="period-chips">
-          <button
-            v-for="option in periodOptions"
-            :key="option.key"
-            class="chip"
-            :class="{ active: selectedPeriodKey === option.key }"
-            @click="changePeriod(option.key)"
+        <button
+          v-for="option in periodOptions"
+          :key="option.key"
+          class="period-chip"
+          :class="{ active: selectedPeriodKey === option.key }"
+          @click="changePeriod(option.key)"
+        >
+          {{ option.label }}
+        </button>
+        
+        <!-- 全螢幕模式下顯示的按鈕 -->
+        <div class="fullscreen-actions">
+          <button 
+            class="action-icon-btn" 
+            @click="toggleFullscreen"
+            :title="isFullscreen ? '退出全螢幕' : '全螢幕'"
           >
-            {{ option.label }}
+            <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+          </button>
+          
+          <button 
+            v-show="!controlPanelOpen" 
+            class="action-icon-btn" 
+            @click="toggleControlPanel"
+            title="圖表控制"
+          >
+            <i class="fas fa-cog"></i>
           </button>
         </div>
-        
-        <!-- Fullscreen Button -->
-        <button 
-          class="action-icon-btn" 
-          @click="toggleFullscreen"
-          :title="isFullscreen ? '退出全螢幕' : '全螢幕'"
-        >
-          <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
-        </button>
-        
-        <!-- Chart Control Button -->
-        <button 
-          v-show="!controlPanelOpen" 
-          class="action-icon-btn" 
-          @click="toggleControlPanel"
-          title="圖表控制"
-        >
-          <i class="fas fa-cog"></i>
-        </button>
       </div>
     </div>
     
@@ -1208,39 +1279,34 @@ onUnmounted(() => {
   box-shadow: none !important;
 }
 
-.chart-header > div:first-child {
+.header-row {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(100, 200, 255, 0.15);
 }
 
 .chart-title {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: #fff;
-  justify-self: flex-start;
 }
 
 .chart-title i {
   color: rgba(100, 200, 255, 0.8);
-}
-
-/* 標題列 */
-.header-top-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
+  font-size: 1.3rem;
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -1274,10 +1340,10 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   background: transparent;
   padding: 0;
-  margin: 0;
+  margin: 0 0 16px 0;
   border-bottom: none;
   box-shadow: none;
 }
@@ -1285,49 +1351,50 @@ onUnmounted(() => {
 /* Frequency Controls */
 .frequency-controls {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  background: transparent;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(100, 200, 255, 0.1);
-}
-
-.frequency-controls .period-chips {
-  display: flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-start;
+  padding: 0 4px;
 }
 
-.frequency-controls .chip {
-  padding: 8px 16px;
+.period-chip {
+  padding: 10px 20px;
   border: 1px solid rgba(100, 200, 255, 0.25);
-  border-radius: 20px;
+  border-radius: 24px;
   background: rgba(15, 23, 42, 0.5);
   color: rgba(226, 232, 240, 0.7);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: center;
   white-space: nowrap;
+  min-width: 70px;
 }
 
-.frequency-controls .chip:hover {
+.period-chip:hover {
   background: rgba(100, 200, 255, 0.15);
   border-color: rgba(100, 200, 255, 0.4);
   color: #fff;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(100, 200, 255, 0.2);
 }
 
-.frequency-controls .chip.active {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8));
+.period-chip.active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(147, 51, 234, 0.9));
   border-color: rgba(59, 130, 246, 0.6);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Fullscreen actions container */
+.fullscreen-actions {
+  display: none;
+  gap: 10px;
+  align-items: center;
+  margin-left: 16px;
 }
 
 /* Fullscreen Button */
@@ -1392,25 +1459,41 @@ onUnmounted(() => {
   position: relative !important;
   width: 100% !important;
   height: auto !important;
-  padding: 16px !important;
+  padding: 20px !important;
   margin: 0 !important;
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 16px !important;
+}
+
+.stock-chart:fullscreen .header-row {
+  margin-bottom: 20px !important;
 }
 
 .stock-chart:fullscreen .chart-title {
   text-align: center !important;
   justify-content: center !important;
-  width: 100% !important;
+  font-size: 1.5rem !important;
+}
+
+.stock-chart:fullscreen .header-actions {
+  display: none !important;
 }
 
 .stock-chart:fullscreen .frequency-controls {
   justify-content: center !important;
-  width: 100% !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.stock-chart:fullscreen .fullscreen-actions {
+  display: flex !important;
+}
+
+.stock-chart:fullscreen .action-icon-btn {
+  display: flex !important;
+  width: 44px !important;
+  height: 44px !important;
 }
 
 /* Floating Gear Button */

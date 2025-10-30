@@ -100,6 +100,10 @@ async function handleLogout() {
           <i class="fas fa-bell"></i>
           警示設定
         </button>
+        <button class="nav-item" :class="{active: currentView==='stockQuery'}" data-view="stockQuery" @click="setView('stockQuery')">
+          <i class="fas fa-search-dollar"></i>
+          股票查詢
+        </button>
         <button class="nav-item" :class="{active: currentView==='pricing'}" data-view="pricing" @click="setView('pricing')">
           <i class="fas fa-tags"></i>
           訂閱方案
