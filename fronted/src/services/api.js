@@ -1,6 +1,9 @@
 // Basic API service wrapper
-//export const API_BASE_URL = `${window.location.origin}/api`;
-export const API_BASE_URL = (import.meta?.env?.VITE_API_BASE_URL ?? `${window.location.origin}/api`).replace(/\/$/, '');
+// Use environment variable or default to backend URL
+const defaultBackend = 'https://taiwan-stock-returns-quantgems-vue-vercel.onrender.com';
+export const API_BASE_URL = (import.meta?.env?.VITE_API_BASE_URL ?? defaultBackend + '/api').replace(/\/$/, '');
+
+console.log('API_BASE_URL:', API_BASE_URL);
 
 export async function httpGet(path, params = {}) {
   const url = new URL(`${API_BASE_URL}${path}`);
