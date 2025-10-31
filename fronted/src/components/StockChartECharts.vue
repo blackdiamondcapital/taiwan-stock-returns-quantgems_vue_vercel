@@ -1,12 +1,69 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted, nextTick, computed } from 'vue'
 import * as echarts from 'echarts'
-import { fetchStockPriceHistory } from '../services/api'
+import { fetchStockPriceHistory, fetchStockQuote, fetchRankings } from '../services/api'
 
 const props = defineProps({
   symbol: { type: String, required: true },
   stockName: { type: String, default: '' },
   period: { type: String, default: '1D' }
+})
+
+// Resolve stock name if not provided by parent
+const resolvedName = ref('')
+const displayName = computed(() => {
+  return (props.stockName && props.stockName.trim()) ? props.stockName.trim() : resolvedName.value
+})
+
+async function resolveStockName(symbol) {
+  try {
+    if (!symbol) { resolvedName.value = ''; return }
+    // If parent already provided, keep it
+    if (props.stockName && props.stockName.trim()) { resolvedName.value = props.stockName.trim(); return }
+    const baseSym = String(symbol).split('.')?.[0]
+    const candidates = Array.from(new Set([
+      String(symbol),
+      baseSym,
+      `${baseSym}.TW`,
+      `${baseSym}.TWO`,
+    ]))
+    resolvedName.value = ''
+    for (const s of candidates) {
+      try {
+        const quote = await fetchStockQuote(s)
+        const name = quote?.name || quote?.short_name || ''
+        if (name && name.trim()) { resolvedName.value = name.trim(); break }
+      } catch (_) { /* ignore and try next */ }
+    }
+    if (!resolvedName.value) {
+      // Fallback: try to find from rankings by matching symbol (ignore market suffix)
+      const periods = ['daily','weekly','monthly']
+      for (const p of periods) {
+        const list = await fetchRankings({ period: p, market: 'all', limit: 300 })
+        const found = Array.isArray(list) ? list.find(r => String(r.symbol).split('.')?.[0] === baseSym) : null
+        if (found && (found.name || found.short_name)) {
+          resolvedName.value = found.short_name || found.name
+          break
+        }
+      }
+    }
+  } catch (e) {
+    resolvedName.value = ''
+  }
+}
+
+onMounted(async () => {
+  await resolveStockName(props.symbol)
+})
+
+watch(() => props.symbol, async (newSymbol) => {
+  await resolveStockName(newSymbol)
+})
+
+watch(() => props.stockName, (newName) => {
+  if (newName && newName.trim()) {
+    resolvedName.value = newName.trim()
+  }
 })
 
 const chartData = ref([])
@@ -1063,7 +1120,7 @@ onUnmounted(() => {
         <!-- 標題列 -->
         <div class="chart-title">
           <i class="fas fa-chart-candlestick"></i>
-          <span>{{ symbol }}{{ stockName ? ' ' + stockName : '' }} {{ chartMode === 'heikin' ? '神奇K線圖' : 'K線圖' }}</span>
+          <span>{{ symbol }}<template v-if="displayName"> {{ displayName }}</template> {{ chartMode === 'heikin' ? '神奇K線圖' : 'K線圖' }}</span>
         </div>
         
         <!-- 右側控制按鈕 -->
