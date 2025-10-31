@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import StockChartECharts from './StockChartECharts.vue'
-import { fetchStockPriceHistory } from '../services/api'
+import { fetchStockPriceHistory, fetchStockQuote } from '../services/api'
 
 const stockSymbol = ref('')
 const searchedSymbol = ref('')
@@ -74,9 +74,25 @@ async function searchStock() {
     }
     
     searchedSymbol.value = symbol
-    // Try to find stock name from popular stocks
+    // Try to find stock name from popular stocks; fallback to quote API
     const stock = popularStocks.find(s => s.symbol === symbol)
-    stockName.value = stock ? stock.name : ''
+    if (stock) {
+      stockName.value = stock.name
+    } else {
+      try {
+        const baseSym = String(symbol)
+        const candidates = [baseSym, `${baseSym}.TW`, `${baseSym}.TWO`]
+        let name = ''
+        for (const s of candidates) {
+          const q = await fetchStockQuote(s)
+          name = q?.short_name || q?.name || ''
+          if (name) break
+        }
+        stockName.value = name
+      } catch (_) {
+        stockName.value = ''
+      }
+    }
     showChart.value = true
     // Force chart component to re-render with new symbol
     chartKey.value++
