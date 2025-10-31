@@ -18,6 +18,7 @@ let chartInstance = null
 const chartMode = ref('standard')
 
 // Indicator toggles
+const showVolume = ref(localStorage.getItem('chartShowVolume') !== 'false')
 const showKD = ref(localStorage.getItem('chartShowKD') === 'true')
 const showMACD = ref(localStorage.getItem('chartShowMACD') === 'true')
 
@@ -52,9 +53,9 @@ const controlPanelOpen = ref(localStorage.getItem('chartControlPanelOpen') === '
 
 // Panel section collapse states
 const panelSections = ref({
-  ma: localStorage.getItem('chartPanelMA') !== 'false',
-  kline: localStorage.getItem('chartPanelKLine') !== 'false',
-  indicators: localStorage.getItem('chartPanelIndicators') !== 'false'
+  ma: localStorage.getItem('chartPanelMA') === 'true',
+  kline: localStorage.getItem('chartPanelKLine') === 'true',
+  indicators: localStorage.getItem('chartPanelIndicators') === 'true'
 })
 
 function toggleControlPanel() {
@@ -366,9 +367,110 @@ function renderChart() {
   const kdData = showKD.value ? calculateKD(ohlc, kdParams.value.period, kdParams.value.k, kdParams.value.d) : null
   const macdData = showMACD.value ? calculateMACD(ohlc, macdParams.value.fast, macdParams.value.slow, macdParams.value.signal) : null
   
+  // Unified MACD scale for all periods (day/week/month): symmetric around 0
+  let macdScale = 1
+  if (macdData) {
+    const macdVals = [...macdData.macd, ...macdData.signal, ...macdData.histogram]
+      .filter(v => v !== '-' && v !== null && v !== undefined)
+      .map(v => Math.abs(Number(v)))
+    const absMax = macdVals.length ? Math.max(...macdVals) : 1
+    macdScale = absMax === 0 ? 1 : absMax * 1.2
+  }
+
+  // Pixel-based layout to prevent subplot overlap
+  const container = chartContainer.value
+  // Prefer ECharts internal canvas height for precise pixel layout
+  const H = (chartInstance && typeof chartInstance.getHeight === 'function')
+    ? chartInstance.getHeight()
+    : (container?.clientHeight || 600)
+  const gapPx = 18
+  const legendBandPx = 22
+  const topMain = 50
+  const mainHeightPx = (showKD.value || showMACD.value || showVolume.value) ? Math.round(H * 0.44) : Math.round(H * 0.86)
+
+  const grids = []
+  grids.push({ left: '5%', right: '8%', top: topMain, height: mainHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)' })
+
+  let nextTop = topMain + mainHeightPx + gapPx
+  let kdLegendTopPx, macdLegendTopPx
+  if (showKD.value) {
+    kdLegendTopPx = nextTop
+    const kdTopPx = kdLegendTopPx + legendBandPx
+    const kdHeightPx = Math.round(H * 0.18)
+    grids.push({ left: '5%', right: '8%', top: kdTopPx, height: kdHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)', backgroundColor: 'rgba(15,23,42,0.35)' })
+    nextTop = kdTopPx + kdHeightPx + gapPx
+  }
+  if (showMACD.value) {
+    macdLegendTopPx = nextTop
+    const macdTopPx = macdLegendTopPx + legendBandPx
+    const macdHeightPx = Math.round(H * 0.17)
+    grids.push({ left: '5%', right: '8%', top: macdTopPx, height: macdHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)', backgroundColor: 'rgba(15,23,42,0.35)' })
+    nextTop = macdTopPx + macdHeightPx + gapPx
+  }
+  if (showVolume.value) {
+    let volTopPx = nextTop
+    // Dynamic volume height ratio: more subplots -> still give volume enough height
+    const volHeightRatio = (showKD.value && showMACD.value) ? 0.10 : ((showKD.value || showMACD.value) ? 0.12 : 0.16)
+    let volHeightPx = Math.max(80, Math.round(H * volHeightRatio))
+    // Hard clamp to ensure last grid fits inside canvas with minimal gap from bottom
+    const bottomPadding = 8
+    if (volTopPx + volHeightPx > H - bottomPadding) {
+      volHeightPx = Math.max(20, (H - bottomPadding) - volTopPx)
+    }
+    // Also ensure MACD bottom + gap <= volume top
+    if (showMACD.value) {
+      const macdGrid = grids[grids.length - 1]
+      const macdBottom = macdGrid.top + macdGrid.height
+      if (volTopPx < macdBottom + gapPx) {
+        volTopPx = macdBottom + gapPx
+      }
+    }
+    grids.push({ left: '5%', right: '8%', top: volTopPx, height: volHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)', backgroundColor: 'rgba(15,23,42,0.35)' })
+  }
+
+  const kdLegendTop = showKD.value ? kdLegendTopPx : undefined
+  const macdLegendTop = showMACD.value ? macdLegendTopPx : undefined
+
+  // Unified grid indexes to avoid off-by-one mistakes
+  const idxMain = 0
+  const idxKD = showKD.value ? 1 : undefined
+  const idxMACD = showMACD.value ? (showKD.value ? 2 : 1) : undefined
+  const idxVol = showVolume.value ? ((showKD.value && showMACD.value) ? 3 : (showKD.value || showMACD.value) ? 2 : 1) : undefined
+
+  // Build hard separators using graphic masks between subplots
+  const separators = []
+  const chartBg = '#0b1220' // close to tailwind slate-900/950
+  function addSeparator(yPx, hPx) {
+    separators.push({
+      type: 'rect',
+      silent: true,
+      z: 20,
+      left: '5%',
+      right: '8%',
+      top: yPx,
+      shape: { width: '100%', height: hPx },
+      style: { fill: chartBg }
+    })
+  }
+  // After main -> before KD (legend band already occupies here)
+  if (showKD.value) {
+    addSeparator(kdLegendTopPx - Math.floor((gapPx - 2) / 2), gapPx) // a little thicker than gap
+  }
+  // Between KD and MACD
+  if (showKD.value && showMACD.value) {
+    const lastKD = grids[idxKD]
+    addSeparator(lastKD.top + lastKD.height - Math.floor((gapPx - 2) / 2), gapPx)
+  }
+  // Between MACD and Volume
+  if (showMACD.value && showVolume.value) {
+    const macdG = grids[idxMACD]
+    addSeparator(macdG.top + macdG.height - Math.floor((gapPx - 2) / 2), gapPx)
+  }
+
   const option = {
     backgroundColor: 'transparent',
     animation: true,
+    graphic: separators,
     legend: [
       {
         data: [`MA${maParams.value.ma1}`, `MA${maParams.value.ma2}`, `MA${maParams.value.ma3}`, `MA${maParams.value.ma4}`, `MA${maParams.value.ma5}`],
@@ -403,10 +505,12 @@ function renderChart() {
             }
           }
         ],
-        // place just above KD subplot area (aligned with KD grid top)
-        top: showMACD.value ? '59%' : '64%',
+        top: kdLegendTop,
         left: 'center',
-        itemGap: 12,
+        itemGap: 10,
+        itemWidth: 18,
+        itemHeight: 8,
+        padding: [2, 8],
         icon: 'line',
         selectedMode: false
       }] : []),
@@ -437,12 +541,15 @@ function renderChart() {
             }
           }
         ],
-        top: showKD.value ? '78%' : '60%',
+        top: macdLegendTop,
         left: 'center',
-        itemGap: 12,
+        itemGap: 10,
+        itemWidth: 18,
+        itemHeight: 8,
+        padding: [2, 8],
         icon: 'line',
         selectedMode: false
-      }] : [])
+      }] : []),
     ],
     tooltip: {
       trigger: 'axis',
@@ -507,32 +614,7 @@ function renderChart() {
     axisPointer: {
       link: [{ xAxisIndex: 'all' }]
     },
-    grid: [
-      {
-        left: '5%',
-        right: '8%',
-        top: 50,
-        height: showKD.value || showMACD.value ? '38%' : '63%'
-      },
-      {
-        left: '5%',
-        right: '8%',
-        height: showKD.value || showMACD.value ? 60 : 90,
-        top: showKD.value || showMACD.value ? '48%' : '70%'
-      },
-      ...(showKD.value ? [{
-        left: '5%',
-        right: '8%',
-        height: showMACD.value ? 80 : 120,
-        top: showMACD.value ? '60%' : '65%'
-      }] : []),
-      ...(showMACD.value ? [{
-        left: '5%',
-        right: '8%',
-        height: showKD.value ? 80 : 120,
-        top: showKD.value ? '82%' : '65%'
-      }] : [])
-    ],
+    grid: grids,
     xAxis: [
       {
         type: 'category',
@@ -546,26 +628,9 @@ function renderChart() {
         min: 'dataMin',
         max: 'dataMax'
       },
-      {
-        type: 'category',
-        gridIndex: 1,
-        data: dates,
-        boundaryGap: false,
-        axisLine: { 
-          lineStyle: { color: 'rgba(100, 200, 255, 0.3)' } 
-        },
-        axisLabel: {
-          color: 'rgba(226, 232, 240, 0.6)',
-          fontSize: 11,
-          margin: 12,
-          hideOverlap: true,
-          show: !showKD.value && !showMACD.value
-        },
-        splitLine: { show: false }
-      },
       ...(showKD.value ? [{
         type: 'category',
-        gridIndex: 2,
+        gridIndex: idxKD,
         data: dates,
         boundaryGap: false,
         axisLine: { 
@@ -576,13 +641,13 @@ function renderChart() {
           fontSize: 11,
           margin: 12,
           hideOverlap: true,
-          show: !showMACD.value
+          show: false
         },
         splitLine: { show: false }
       }] : []),
       ...(showMACD.value ? [{
         type: 'category',
-        gridIndex: showKD.value ? 3 : 2,
+        gridIndex: idxMACD,
         data: dates,
         boundaryGap: false,
         axisLine: { 
@@ -592,7 +657,24 @@ function renderChart() {
           color: 'rgba(226, 232, 240, 0.6)',
           fontSize: 11,
           margin: 12,
-          hideOverlap: true
+          hideOverlap: true,
+          show: false
+        },
+        splitLine: { show: false }
+      }] : []),
+      ...(showVolume.value ? [{
+        type: 'category',
+        gridIndex: idxVol,
+        data: dates,
+        boundaryGap: false,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: {
+          color: 'rgba(226, 232, 240, 0.6)',
+          fontSize: 10,
+          margin: 12,
+          hideOverlap: true,
+          show: true
         },
         splitLine: { show: false }
       }] : [])
@@ -621,30 +703,9 @@ function renderChart() {
           }
         }
       },
-      {
-        scale: true,
-        gridIndex: 1,
-        splitNumber: 2,
-        axisLine: { show: false },
-        axisLabel: {
-          color: 'rgba(226, 232, 240, 0.6)',
-          fontSize: 10,
-          width: 60,
-          overflow: 'truncate',
-          formatter: function (value) {
-            if (value >= 1000000) {
-              return (value / 1000000).toFixed(1) + 'M'
-            } else if (value >= 1000) {
-              return (value / 1000).toFixed(0) + 'K'
-            }
-            return value.toString()
-          }
-        },
-        splitLine: { show: false }
-      },
       ...(showKD.value ? [{
         scale: true,
-        gridIndex: 2,
+        gridIndex: idxKD,
         min: 0,
         max: 100,
         splitNumber: 2,
@@ -668,8 +729,11 @@ function renderChart() {
       }] : []),
       ...(showMACD.value ? [{
         scale: true,
-        gridIndex: showKD.value ? 3 : 2,
+        gridIndex: idxMACD,
         splitNumber: 2,
+        min: -macdScale,
+        max: macdScale,
+        boundaryGap: ['10%', '10%'],
         axisLine: { 
           lineStyle: { color: 'rgba(100, 200, 255, 0.3)' } 
         },
@@ -687,12 +751,34 @@ function renderChart() {
             color: 'rgba(100, 200, 255, 0.1)'
           }
         }
+      }] : []),
+      ...(showVolume.value ? [{
+        scale: true,
+        gridIndex: idxVol,
+        splitNumber: 2,
+        min: 0,
+        axisLine: { show: false },
+        axisLabel: {
+          color: 'rgba(226, 232, 240, 0.6)',
+          fontSize: 10,
+          width: 60,
+          overflow: 'truncate',
+          formatter: function (value) {
+            if (value >= 1000000) {
+              return (value / 1000000).toFixed(1) + 'M'
+            } else if (value >= 1000) {
+              return (value / 1000).toFixed(0) + 'K'
+            }
+            return value.toString()
+          }
+        },
+        splitLine: { show: false }
       }] : [])
     ],
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: [0, 1, ...(showKD.value ? [2] : []), ...(showMACD.value ? [showKD.value ? 3 : 2] : [])],
+        xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
         start: 0,
         end: 100
       }
@@ -770,12 +856,86 @@ function renderChart() {
         },
         showSymbol: false
       },
-      {
+            ...(showKD.value && kdData ? [
+        {
+          name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): K`,
+          type: 'line',
+          xAxisIndex: idxKD,
+          yAxisIndex: idxKD,
+          data: kdData.k,
+          smooth: true,
+          clip: true,
+          lineStyle: {
+            width: 2,
+            color: '#f59e0b'
+          },
+          showSymbol: false
+        },
+        {
+          name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): D`,
+          type: 'line',
+          xAxisIndex: idxKD,
+          yAxisIndex: idxKD,
+          data: kdData.d,
+          smooth: true,
+          clip: true,
+          lineStyle: {
+            width: 2,
+            color: '#3b82f6'
+          },
+          showSymbol: false
+        }
+      ] : []),
+      ...(showMACD.value && macdData ? [
+        {
+          name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): MACD`,
+          type: 'line',
+          xAxisIndex: idxMACD,
+          yAxisIndex: idxMACD,
+          data: macdData.macd,
+          smooth: true,
+          clip: true,
+          lineStyle: {
+            width: 2,
+            color: '#3b82f6'
+          },
+          showSymbol: false
+        },
+        {
+          name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): Signal`,
+          type: 'line',
+          xAxisIndex: idxMACD,
+          yAxisIndex: idxMACD,
+          data: macdData.signal,
+          smooth: true,
+          clip: true,
+          lineStyle: {
+            width: 2,
+            color: '#f59e0b'
+          },
+          showSymbol: false
+        },
+        {
+          name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): Histogram`,
+          type: 'bar',
+          xAxisIndex: idxMACD,
+          yAxisIndex: idxMACD,
+          data: macdData.histogram,
+          clip: true,
+          itemStyle: {
+            color: function(params) {
+              return params.value > 0 ? 'rgba(248, 113, 113, 0.6)' : 'rgba(74, 222, 128, 0.6)'
+            }
+          }
+        }
+      ] : []),
+      ...(showVolume.value ? [{
         name: '成交量',
         type: 'bar',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
+        xAxisIndex: idxVol,
+        yAxisIndex: idxVol,
         data: volumes,
+        clip: true,
         barWidth: '60%',
         barCategoryGap: '20%',
         itemStyle: {
@@ -789,75 +949,7 @@ function renderChart() {
             return 'rgba(100, 200, 255, 0.3)'
           }
         }
-      },
-      ...(showKD.value && kdData ? [
-        {
-          name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): K`,
-          type: 'line',
-          xAxisIndex: 2,
-          yAxisIndex: 2,
-          data: kdData.k,
-          smooth: true,
-          lineStyle: {
-            width: 2,
-            color: '#f59e0b'
-          },
-          showSymbol: false
-        },
-        {
-          name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): D`,
-          type: 'line',
-          xAxisIndex: 2,
-          yAxisIndex: 2,
-          data: kdData.d,
-          smooth: true,
-          lineStyle: {
-            width: 2,
-            color: '#3b82f6'
-          },
-          showSymbol: false
-        }
-      ] : []),
-      ...(showMACD.value && macdData ? [
-        {
-          name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): MACD`,
-          type: 'line',
-          xAxisIndex: showKD.value ? 3 : 2,
-          yAxisIndex: showKD.value ? 3 : 2,
-          data: macdData.macd,
-          smooth: true,
-          lineStyle: {
-            width: 2,
-            color: '#3b82f6'
-          },
-          showSymbol: false
-        },
-        {
-          name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): Signal`,
-          type: 'line',
-          xAxisIndex: showKD.value ? 3 : 2,
-          yAxisIndex: showKD.value ? 3 : 2,
-          data: macdData.signal,
-          smooth: true,
-          lineStyle: {
-            width: 2,
-            color: '#f59e0b'
-          },
-          showSymbol: false
-        },
-        {
-          name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): Histogram`,
-          type: 'bar',
-          xAxisIndex: showKD.value ? 3 : 2,
-          yAxisIndex: showKD.value ? 3 : 2,
-          data: macdData.histogram,
-          itemStyle: {
-            color: function(params) {
-              return params.value > 0 ? 'rgba(248, 113, 113, 0.6)' : 'rgba(74, 222, 128, 0.6)'
-            }
-          }
-        }
-      ] : [])
+      }] : [])
     ]
   }
   
@@ -900,7 +992,8 @@ watch(() => chartData.value.length, (newLen) => {
 })
 
 // Watch for indicator toggles
-watch([showKD, showMACD], () => {
+watch([showVolume, showKD, showMACD], () => {
+  localStorage.setItem('chartShowVolume', showVolume.value.toString())
   localStorage.setItem('chartShowKD', showKD.value.toString())
   localStorage.setItem('chartShowMACD', showMACD.value.toString())
   if (chartData.value.length > 0) {
@@ -1254,6 +1347,18 @@ onUnmounted(() => {
                   />
                 </div>
               </div>
+              
+              <label class="indicator-toggle">
+                <input 
+                  type="checkbox" 
+                  v-model="showVolume"
+                  class="toggle-checkbox"
+                />
+                <span class="toggle-label">
+                  <i class="fas fa-chart-bar"></i>
+                  <span>成交量</span>
+                </span>
+              </label>
             </div>
               </div>
             </transition>
