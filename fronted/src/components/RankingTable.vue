@@ -26,7 +26,7 @@ const quickNavExpanded = ref(true) // 快速跳轉展開狀態
 const rankingContainer = ref(null)
 
 // 視圖模式
-const viewMode = ref('list') // 'waterfall', 'list', 'table'
+const viewMode = ref('table') // 固定為表格模式
 const viewModeOptions = [
   { value: 'list', label: '列表', icon: 'fa-list' },
   { value: 'table', label: '表格', icon: 'fa-table' },
@@ -470,20 +470,6 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <!-- 視圖模式切換 -->
-            <div class="view-mode-switch">
-              <button
-                v-for="option in viewModeOptions"
-                :key="option.value"
-                class="view-mode-btn"
-                :class="{ active: viewMode === option.value }"
-                @click="viewMode = option.value"
-                :title="option.label"
-              >
-                <i class="fas" :class="option.icon"></i>
-              </button>
-            </div>
-            
             <div class="header-actions">
               <button class="watchlist-btn waterfall-btn" @click="openWatchlistPanel" title="我的自選股">
                 <i class="fas fa-star"></i>
@@ -760,6 +746,9 @@ onUnmounted(() => {
                     <td class="table-volume">{{ (Number(item.volume||0)/1000).toFixed(0) }}K</td>
                     <td class="table-actions">
                       <button class="table-action-btn" @click="handleAction('detail', item, $event)" title="詳情">
+                        <i class="fas fa-info-circle"></i>
+                      </button>
+                      <button class="table-action-btn" @click="handleAction('analysis', item, $event)" title="技術線圖">
                         <i class="fas fa-chart-line"></i>
                       </button>
                       <button 
