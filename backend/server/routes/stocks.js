@@ -196,7 +196,7 @@ export default function createStockRoutes(pool) {
 
       const existingSymbolResult = await client.query(
         `SELECT symbol
-         FROM tw_stock_prices
+         FROM stock_prices
          WHERE symbol = ANY($1::text[])
          GROUP BY symbol
          ORDER BY MAX(date) DESC, symbol
@@ -217,7 +217,7 @@ export default function createStockRoutes(pool) {
 
       const latestResult = await client.query(
         `SELECT MAX(date) AS latest_date
-         FROM tw_stock_prices
+         FROM stock_prices
          WHERE symbol = $1`,
         [actualSymbol]
       );
@@ -246,7 +246,7 @@ export default function createStockRoutes(pool) {
 
       const historyResult = await client.query(
         `SELECT date, open_price, high_price, low_price, close_price, volume
-         FROM tw_stock_prices
+         FROM stock_prices
          WHERE symbol = $1
            AND date BETWEEN $2::date AND $3::date
          ORDER BY date ASC`,
