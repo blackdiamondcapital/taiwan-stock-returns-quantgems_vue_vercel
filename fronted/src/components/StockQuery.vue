@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import StockChartECharts from './StockChartECharts.vue'
+import { fetchStockPriceHistory } from '../services/api'
 
 const stockSymbol = ref('')
 const searchedSymbol = ref('')
@@ -65,13 +66,10 @@ async function searchStock() {
   // 先檢查是否有數據
   isLoading.value = true
   try {
-    const response = await fetch(`/api/stocks/${symbol}/price-history?period=1D`)
-    const data = await response.json()
-    
-    if (!data.data || data.data.length === 0) {
+    const candles = await fetchStockPriceHistory(symbol, '1D')
+    if (!candles || candles.length === 0) {
       errorMessage.value = `股票代號 ${symbol} 目前無歷史數據，可能是：\n1. 股票代號不存在\n2. 該股票尚未有交易記錄\n3. 資料庫中無此股票資料`
       showChart.value = false
-      isLoading.value = false
       return
     }
     
