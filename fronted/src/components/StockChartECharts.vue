@@ -84,6 +84,7 @@ const symbolInput = ref('')
 const showVolume = ref(localStorage.getItem('chartShowVolume') !== 'false')
 const showKD = ref(localStorage.getItem('chartShowKD') === 'true')
 const showMACD = ref(localStorage.getItem('chartShowMACD') === 'true')
+const showHMA = ref(localStorage.getItem('chartShowHMA') === 'true')
 
 // Fullscreen state
 const isFullscreen = ref(false)
@@ -94,6 +95,10 @@ const kdParams = ref({
   k: parseInt(localStorage.getItem('chartKDK') || '3'),
   d: parseInt(localStorage.getItem('chartKDD') || '3')
 })
+// KD dot-matrix mode
+const kdDotMode = ref(localStorage.getItem('chartKDDotMode') === 'true')
+// KD midline (50) toggle
+const kdMidline = ref(localStorage.getItem('chartKDMidline') === 'true')
 
 // MACD Parameters
 const macdParams = ref({
@@ -110,6 +115,17 @@ const maParams = ref({
   ma4: parseInt(localStorage.getItem('chartMA4') || '30'),
   ma5: parseInt(localStorage.getItem('chartMA5') || '60')
 })
+
+// HMA Parameters
+const hmaParams = ref({
+  period: parseInt(localStorage.getItem('chartHMAPeriod') || '21')
+})
+
+// Help popover state
+const helpOpenKey = ref('') // '', 'kd', 'macd', 'hma', 'vol'
+function toggleHelp(key) {
+  helpOpenKey.value = helpOpenKey.value === key ? '' : key
+}
 
 // Control panel state
 const controlPanelOpen = ref(localStorage.getItem('chartControlPanelOpen') === 'true')
@@ -197,6 +213,12 @@ function saveMAParams() {
   localStorage.setItem('chartMA3', maParams.value.ma3.toString())
   localStorage.setItem('chartMA4', maParams.value.ma4.toString())
   localStorage.setItem('chartMA5', maParams.value.ma5.toString())
+  renderChart()
+}
+
+// Save HMA parameters to localStorage
+function saveHMAParams() {
+  localStorage.setItem('chartHMAPeriod', hmaParams.value.period.toString())
   renderChart()
 }
 
@@ -317,6 +339,43 @@ function renderChart() {
   const ma3 = calculateMA(ohlc, maParams.value.ma3)
   const ma4 = calculateMA(ohlc, maParams.value.ma4)
   const ma5 = calculateMA(ohlc, maParams.value.ma5)
+  
+  // Calculate HMA indicator (based on close price index=1)
+  function calculateWMA(arr, period) {
+    const out = new Array(arr.length).fill(undefined)
+    if (period <= 1) {
+      for (let i = 0; i < arr.length; i++) out[i] = arr[i]
+      return out
+    }
+    const weightSum = period * (period + 1) / 2
+    for (let i = period - 1; i < arr.length; i++) {
+      let acc = 0
+      let valid = true
+      for (let j = 0; j < period; j++) {
+        const v = arr[i - j]
+        if (typeof v !== 'number' || !isFinite(v)) { valid = false; break }
+        acc += v * (period - j)
+      }
+      out[i] = valid ? acc / weightSum : undefined
+    }
+    return out
+  }
+  function calculateHMA(data, period) {
+    const closes = data.map(d => d[1])
+    const n = Math.max(2, Math.floor(period))
+    const n2 = Math.max(1, Math.floor(n / 2))
+    const ns = Math.max(1, Math.floor(Math.sqrt(n)))
+    const wmaN = calculateWMA(closes, n)
+    const wmaN2 = calculateWMA(closes, n2)
+    const diff = closes.map((_, i) => {
+      const a = wmaN2[i]
+      const b = wmaN[i]
+      return (a !== undefined && b !== undefined) ? (2 * a - b) : undefined
+    })
+    const hmaRaw = calculateWMA(diff, ns)
+    return hmaRaw.map(v => v === undefined ? '-' : Number(v.toFixed(2)))
+  }
+  const hma = showHMA.value ? calculateHMA(ohlc, hmaParams.value.period) : null
   
   // Calculate KD indicator
   function calculateKD(data, n = 9, m1 = 3, m2 = 3) {
@@ -477,19 +536,26 @@ function renderChart() {
   const gapPx = 18
   const legendBandPx = 22
   const topMain = 50
-  const mainHeightPx = (showKD.value || showMACD.value || showVolume.value) ? Math.round(H * 0.44) : Math.round(H * 0.86)
+  const mainHeightPx = (showKD.value || showHMA.value || showMACD.value || showVolume.value) ? Math.round(H * 0.44) : Math.round(H * 0.86)
 
   const grids = []
   grids.push({ left: '5%', right: '8%', top: topMain, height: mainHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)' })
 
   let nextTop = topMain + mainHeightPx + gapPx
-  let kdLegendTopPx, macdLegendTopPx
+  let kdLegendTopPx, hmaLegendTopPx, macdLegendTopPx
   if (showKD.value) {
     kdLegendTopPx = nextTop
     const kdTopPx = kdLegendTopPx + legendBandPx
     const kdHeightPx = Math.round(H * 0.18)
     grids.push({ left: '5%', right: '8%', top: kdTopPx, height: kdHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)', backgroundColor: 'rgba(15,23,42,0.35)' })
     nextTop = kdTopPx + kdHeightPx + gapPx
+  }
+  if (showHMA.value) {
+    hmaLegendTopPx = nextTop
+    const hmaTopPx = hmaLegendTopPx + legendBandPx
+    const hmaHeightPx = Math.round(H * 0.16)
+    grids.push({ left: '5%', right: '8%', top: hmaTopPx, height: hmaHeightPx, containLabel: true, borderWidth: 1, borderColor: 'rgba(100, 200, 255, 0.2)', backgroundColor: 'rgba(15,23,42,0.35)' })
+    nextTop = hmaTopPx + hmaHeightPx + gapPx
   }
   if (showMACD.value) {
     macdLegendTopPx = nextTop
@@ -520,13 +586,16 @@ function renderChart() {
   }
 
   const kdLegendTop = showKD.value ? kdLegendTopPx : undefined
+  const hmaLegendTop = showHMA.value ? hmaLegendTopPx : undefined
   const macdLegendTop = showMACD.value ? macdLegendTopPx : undefined
 
   // Unified grid indexes to avoid off-by-one mistakes
   const idxMain = 0
-  const idxKD = showKD.value ? 1 : undefined
-  const idxMACD = showMACD.value ? (showKD.value ? 2 : 1) : undefined
-  const idxVol = showVolume.value ? ((showKD.value && showMACD.value) ? 3 : (showKD.value || showMACD.value) ? 2 : 1) : undefined
+  let nextIdx = 1
+  const idxKD = showKD.value ? nextIdx++ : undefined
+  const idxHMA = showHMA.value ? nextIdx++ : undefined
+  const idxMACD = showMACD.value ? nextIdx++ : undefined
+  const idxVol = showVolume.value ? nextIdx++ : undefined
 
   // Build hard separators using graphic masks between subplots
   const separators = []
@@ -568,14 +637,25 @@ function renderChart() {
       })
     }
   }
-  // After main -> before KD (legend band already occupies here)
-  if (showKD.value) {
-    addSeparator(kdLegendTopPx - Math.floor((gapPx - 2) / 2), gapPx) // a little thicker than gap
+  // After main -> before first sub-plot (KD or HMA)
+  if (showKD.value || showHMA.value) {
+    const firstTop = showKD.value ? kdLegendTopPx : hmaLegendTopPx
+    addSeparator(firstTop - Math.floor((gapPx - 2) / 2), gapPx)
   }
   // Between KD and MACD
   if (showKD.value && showMACD.value) {
     const lastKD = grids[idxKD]
     addSeparator(lastKD.top + lastKD.height - Math.floor((gapPx - 2) / 2), gapPx)
+  }
+  // Between KD and HMA
+  if (showKD.value && showHMA.value) {
+    const kdG = grids[idxKD]
+    addSeparator(kdG.top + kdG.height - Math.floor((gapPx - 2) / 2), gapPx)
+  }
+  // Between HMA and MACD
+  if (showHMA.value && showMACD.value) {
+    const hmaG = grids[idxHMA]
+    addSeparator(hmaG.top + hmaG.height - Math.floor((gapPx - 2) / 2), gapPx)
   }
   // Between MACD and Volume
   if (showMACD.value && showVolume.value) {
@@ -602,6 +682,26 @@ function renderChart() {
           fontSize: 11
         }
       },
+      ...(showHMA.value ? [{
+        data: [
+          {
+            name: `HMA(${hmaParams.value.period})`,
+            textStyle: {
+              color: '#22d3ee',
+              fontSize: 10,
+              fontWeight: 500
+            }
+          }
+        ],
+        top: hmaLegendTop,
+        left: 'center',
+        itemGap: 10,
+        itemWidth: 18,
+        itemHeight: 8,
+        padding: [2, 8],
+        icon: 'line',
+        selectedMode: false
+      }] : []),
       ...(showKD.value ? [{
         data: [
           {
@@ -761,6 +861,23 @@ function renderChart() {
         },
         splitLine: { show: false }
       }] : []),
+      ...(showHMA.value ? [{
+        type: 'category',
+        gridIndex: idxHMA,
+        data: dates,
+        boundaryGap: false,
+        axisLine: { 
+          lineStyle: { color: 'rgba(100, 200, 255, 0.3)' } 
+        },
+        axisLabel: {
+          color: 'rgba(226, 232, 240, 0.6)',
+          fontSize: 11,
+          margin: 12,
+          hideOverlap: true,
+          show: false
+        },
+        splitLine: { show: false }
+      }] : []),
       ...(showMACD.value ? [{
         type: 'category',
         gridIndex: idxMACD,
@@ -843,6 +960,28 @@ function renderChart() {
           }
         }
       }] : []),
+      ...(showHMA.value ? [{
+        scale: true,
+        gridIndex: idxHMA,
+        splitNumber: 2,
+        axisLine: { 
+          lineStyle: { color: 'rgba(100, 200, 255, 0.3)' } 
+        },
+        axisLabel: {
+          color: 'rgba(226, 232, 240, 0.6)',
+          fontSize: 10,
+          width: 60,
+          overflow: 'truncate',
+          formatter: function (value) {
+            return Number(value).toFixed(2)
+          }
+        },
+        splitLine: {
+          lineStyle: {
+            color: 'rgba(100, 200, 255, 0.1)'
+          }
+        }
+      }] : []),
       ...(showMACD.value ? [{
         scale: true,
         gridIndex: idxMACD,
@@ -894,7 +1033,7 @@ function renderChart() {
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
+        xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showHMA.value ? [idxHMA] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
         // 預設顯示最後 120 根K，留下空間可向左拖曳
         startValue: Math.max(0, dates.length - 120),
         endValue: Math.max(0, dates.length - 1),
@@ -904,7 +1043,7 @@ function renderChart() {
       },
       {
         type: 'slider',
-        xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
+        xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showHMA.value ? [idxHMA] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
         startValue: Math.max(0, dates.length - 120),
         endValue: Math.max(0, dates.length - 1),
         bottom: 6,
@@ -989,36 +1128,113 @@ function renderChart() {
         },
         showSymbol: false
       },
-            ...(showKD.value && kdData ? [
-        {
-          name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): K`,
-          type: 'line',
-          xAxisIndex: idxKD,
-          yAxisIndex: idxKD,
-          data: kdData.k,
-          smooth: true,
-          clip: true,
-          lineStyle: {
-            width: 2,
-            color: '#f59e0b'
-          },
-          showSymbol: false
+      ...(showHMA.value && hma ? [{
+        name: `HMA(${hmaParams.value.period})`,
+        type: 'line',
+        xAxisIndex: idxHMA,
+        yAxisIndex: idxHMA,
+        data: hma,
+        smooth: true,
+        clip: true,
+        lineStyle: {
+          width: 2,
+          color: '#22d3ee'
         },
-        {
-          name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): D`,
-          type: 'line',
-          xAxisIndex: idxKD,
-          yAxisIndex: idxKD,
-          data: kdData.d,
-          smooth: true,
-          clip: true,
-          lineStyle: {
-            width: 2,
-            color: '#3b82f6'
+        showSymbol: false
+      }] : []),
+            ...(showKD.value && kdData ? (
+        kdDotMode.value ? [
+          {
+            name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): K`,
+            type: 'scatter',
+            xAxisIndex: idxKD,
+            yAxisIndex: idxKD,
+            data: kdData.k,
+            clip: true,
+            symbol: 'circle',
+            symbolSize: 4,
+            itemStyle: { color: '#f59e0b' },
+            markLine: kdMidline.value ? {
+              symbol: 'none',
+              silent: true,
+              z: 10,
+              lineStyle: { color: '#ef4444', width: 3, type: 'solid' },
+              label: {
+                show: true,
+                position: 'end',
+                formatter: () => '50',
+                color: '#ef4444',
+                fontSize: 13,
+                fontWeight: '800',
+                backgroundColor: 'transparent',
+                padding: 0,
+                borderRadius: 0
+              },
+              data: [{ yAxis: 50 }]
+            } : undefined
           },
-          showSymbol: false
-        }
-      ] : []),
+          {
+            name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): D`,
+            type: 'scatter',
+            xAxisIndex: idxKD,
+            yAxisIndex: idxKD,
+            data: kdData.d,
+            clip: true,
+            symbol: 'circle',
+            symbolSize: 4,
+            itemStyle: { color: '#3b82f6' },
+            markLine: undefined
+          }
+        ] : [
+          {
+            name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): K`,
+            type: 'line',
+            xAxisIndex: idxKD,
+            yAxisIndex: idxKD,
+            data: kdData.k,
+            smooth: true,
+            clip: true,
+            lineStyle: {
+              width: 2,
+              color: '#f59e0b'
+            },
+            showSymbol: false,
+            markLine: kdMidline.value ? {
+              symbol: 'none',
+              silent: true,
+              z: 10,
+              lineStyle: { color: '#ef4444', width: 3, type: 'solid' },
+              label: {
+                show: true,
+                position: 'end',
+                formatter: () => '50',
+                color: '#ef4444',
+                fontSize: 13,
+                fontWeight: '800',
+                backgroundColor: 'transparent',
+                padding: 0,
+                borderRadius: 0
+              },
+              data: [{ yAxis: 50 }]
+            } : undefined
+          },
+          {
+            name: `KD(${kdParams.value.period},${kdParams.value.k},${kdParams.value.d}): D`,
+            type: 'line',
+            xAxisIndex: idxKD,
+            yAxisIndex: idxKD,
+            data: kdData.d,
+            smooth: true,
+            clip: true,
+            lineStyle: {
+              width: 2,
+              color: '#3b82f6'
+            },
+            showSymbol: false,
+            markLine: undefined
+          }
+        ]
+      ) : []),
       ...(showMACD.value && macdData ? [
         {
           name: `MACD(${macdParams.value.fast},${macdParams.value.slow},${macdParams.value.signal}): MACD`,
@@ -1125,10 +1341,26 @@ watch(() => chartData.value.length, (newLen) => {
 })
 
 // Watch for indicator toggles
-watch([showVolume, showKD, showMACD], () => {
+watch([showVolume, showKD, showMACD, showHMA], () => {
   localStorage.setItem('chartShowVolume', showVolume.value.toString())
   localStorage.setItem('chartShowKD', showKD.value.toString())
   localStorage.setItem('chartShowMACD', showMACD.value.toString())
+  localStorage.setItem('chartShowHMA', showHMA.value.toString())
+  if (chartData.value.length > 0) {
+    renderChart()
+  }
+})
+
+// Persist KD dot mode and re-render on change
+watch(() => kdDotMode.value, (val) => {
+  localStorage.setItem('chartKDDotMode', val.toString())
+  if (chartData.value.length > 0) {
+    renderChart()
+  }
+})
+
+watch(() => kdMidline.value, (val) => {
+  localStorage.setItem('chartKDMidline', val.toString())
   if (chartData.value.length > 0) {
     renderChart()
   }
@@ -1400,7 +1632,20 @@ onUnmounted(() => {
                   <i class="fas fa-chart-line"></i>
                   <span>KD指標</span>
                 </span>
+                <button class="help-icon" type="button" @click.stop.prevent="toggleHelp('kd')" title="說明"><i class="fas fa-info-circle"></i></button>
               </label>
+              <div v-show="helpOpenKey === 'kd'" class="ind-help-popover">
+                <div class="help-title">KD 指標</div>
+                <div class="help-body">
+                  <p>定義：收盤價在最近 N 根高低區間的位置（%K），平滑得 %D。</p>
+                  <ul>
+                    <li>超買/超賣：>80 偏熱、<20 偏冷（搭配趨勢過濾）。</li>
+                    <li>交叉：K 上穿 D 偏多；K 下穿 D 偏空。靠近區間邊界的交叉更可靠。</li>
+                    <li>順勢濾網：多頭僅採納低檔金叉，空頭僅採納高檔死叉。</li>
+                    <li>背離：價創新高而 KD 未創新高＝動能轉弱（反之亦然）。</li>
+                  </ul>
+                </div>
+              </div>
               
               <!-- KD Parameters -->
               <div v-show="showKD" class="parameter-controls">
@@ -1437,6 +1682,14 @@ onUnmounted(() => {
                     class="param-input"
                   />
                 </div>
+                <div class="param-group">
+                  <label>點陣模式:</label>
+                  <input type="checkbox" v-model="kdDotMode" @change="() => {}" />
+                </div>
+                <div class="param-group">
+                  <label>顯示50中線:</label>
+                  <input type="checkbox" v-model="kdMidline" @change="() => {}" />
+                </div>
               </div>
               
               <label class="indicator-toggle">
@@ -1449,7 +1702,20 @@ onUnmounted(() => {
                   <i class="fas fa-chart-area"></i>
                   <span>MACD指標</span>
                 </span>
+                <button class="help-icon" type="button" @click.stop.prevent="toggleHelp('macd')" title="說明"><i class="fas fa-info-circle"></i></button>
               </label>
+              <div v-show="helpOpenKey === 'macd'" class="ind-help-popover">
+                <div class="help-title">MACD</div>
+                <div class="help-body">
+                  <p>定義：快慢 EMA 之差為 MACD，對其做 EMA 得 Signal，差為柱狀。</p>
+                  <ul>
+                    <li>零軸：上方＝多頭動能，下方＝空頭動能；近零軸交叉常伴隨趨勢切換。</li>
+                    <li>交叉：MACD 上穿 Signal 偏多；下穿偏空，搭配放量更佳。</li>
+                    <li>柱狀：擴張＝動能加速；收斂＝動能轉弱或可能反轉。</li>
+                    <li>背離：價/柱狀不同步創高低，留意趨勢衰減。</li>
+                  </ul>
+                </div>
+              </div>
               
               <!-- MACD Parameters -->
               <div v-show="showMACD" class="parameter-controls">
@@ -1495,6 +1761,46 @@ onUnmounted(() => {
               <label class="indicator-toggle">
                 <input 
                   type="checkbox" 
+                  v-model="showHMA"
+                  class="toggle-checkbox"
+                />
+                <span class="toggle-label">
+                  <i class="fas fa-wave-square"></i>
+                  <span>HMA指標</span>
+                </span>
+                <button class="help-icon" type="button" @click.stop.prevent="toggleHelp('hma')" title="說明"><i class="fas fa-info-circle"></i></button>
+              </label>
+              <div v-show="helpOpenKey === 'hma'" class="ind-help-popover">
+                <div class="help-title">HMA</div>
+                <div class="help-body">
+                  <p>定義：Hull 移動平均線，低延遲且平滑。</p>
+                  <ul>
+                    <li>趨勢：HMA 上揚偏多、下彎偏空。</li>
+                    <li>回檔切入：多頭中回測 HMA 企穩，可作順勢切入區。</li>
+                    <li>交叉/穿越：價格重回 HMA 或快慢 HMA 交叉可作轉折輔助。</li>
+                    <li>注意：盤整雜訊較多，建議與 MACD/KD 或量能共振。</li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- HMA Parameters -->
+              <div v-show="showHMA" class="parameter-controls">
+                <div class="param-group">
+                  <label>週期:</label>
+                  <input 
+                    type="number" 
+                    v-model.number="hmaParams.period" 
+                    min="2" 
+                    max="300" 
+                    @change="saveHMAParams"
+                    class="param-input"
+                  />
+                </div>
+              </div>
+
+              <label class="indicator-toggle">
+                <input 
+                  type="checkbox" 
                   v-model="showVolume"
                   class="toggle-checkbox"
                 />
@@ -1502,7 +1808,20 @@ onUnmounted(() => {
                   <i class="fas fa-chart-bar"></i>
                   <span>成交量</span>
                 </span>
+                <button class="help-icon" type="button" @click.stop.prevent="toggleHelp('vol')" title="說明"><i class="fas fa-info-circle"></i></button>
               </label>
+              <div v-show="helpOpenKey === 'vol'" class="ind-help-popover">
+                <div class="help-title">成交量</div>
+                <div class="help-body">
+                  <p>定義：每根的成交數量。</p>
+                  <ul>
+                    <li>突破放量：箱頂/趨勢線突破若伴隨放量，成功率較高。</li>
+                    <li>量縮回檔：多頭中回檔量縮且價守關鍵均線，屬健康整理。</li>
+                    <li>量價背離：價升量縮警示續航力不足；價跌量縮則下跌動能疲弱。</li>
+                    <li>回測觀察：跌破支撐且放量多為轉弱訊號；無量跌破可先觀察回抽。</li>
+                  </ul>
+                </div>
+              </div>
             </div>
               </div>
             </transition>
