@@ -9,6 +9,8 @@ const props = defineProps({
   period: { type: String, default: '1D' }
 })
 
+const emit = defineEmits(['search-symbol'])
+
 // Resolve stock name if not provided by parent
 const resolvedName = ref('')
 const displayName = computed(() => {
@@ -58,6 +60,8 @@ onMounted(async () => {
 
 watch(() => props.symbol, async (newSymbol) => {
   await resolveStockName(newSymbol)
+  await loadChartData()
+  nextTick(() => renderChart())
 })
 
 watch(() => props.stockName, (newName) => {
@@ -73,6 +77,8 @@ let chartInstance = null
 
 // chart mode: 'standard' | 'heikin'
 const chartMode = ref('standard')
+
+const symbolInput = ref('')
 
 // Indicator toggles
 const showVolume = ref(localStorage.getItem('chartShowVolume') !== 'false')
@@ -137,6 +143,7 @@ function toggleFullscreen() {
     } else if (chartElement.msRequestFullscreen) {
       chartElement.msRequestFullscreen()
     }
+    symbolInput.value = String(props.symbol || '')
     isFullscreen.value = true
   } else {
     // Exit fullscreen
@@ -150,6 +157,22 @@ function toggleFullscreen() {
     isFullscreen.value = false
   }
 }
+
+function submitSymbolSearch() {
+  const sym = String(symbolInput.value || '').trim()
+  if (!/^\d{4}$/.test(sym)) return
+  emit('search-symbol', sym)
+}
+
+function enterFullscreen() {
+  if (!isFullscreen.value) {
+    toggleFullscreen()
+  } else {
+    symbolInput.value = String(props.symbol || '')
+  }
+}
+
+defineExpose({ enterFullscreen })
 
 // Save KD parameters to localStorage
 function saveKDParams() {
@@ -1209,6 +1232,20 @@ onUnmounted(() => {
           {{ option.label }}
         </button>
         
+        <!-- 全螢幕下的代號查詢 -->
+        <div v-if="isFullscreen" class="fullscreen-search-box">
+          <i class="fas fa-search"></i>
+          <input
+            v-model="symbolInput"
+            type="text"
+            maxlength="4"
+            placeholder="輸入代號例如 2330，按 Enter 查詢"
+            @keyup.enter="submitSymbolSearch"
+            class="fullscreen-search-input"
+          />
+          <button class="fullscreen-search-btn" @click="submitSymbolSearch">查詢</button>
+        </div>
+
         <!-- K線模式切換 -->
         <div class="kline-mode-toggle">
           <button 
@@ -1654,6 +1691,39 @@ onUnmounted(() => {
   gap: 10px;
   align-items: center;
   margin-left: 16px;
+}
+
+/* Fullscreen search box */
+.fullscreen-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(100, 200, 255, 0.25);
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.fullscreen-search-box i {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.fullscreen-search-input {
+  width: 140px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.fullscreen-search-btn {
+  padding: 6px 12px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.15);
+  color: #cbd5e1;
+  border-radius: 16px;
+  cursor: pointer;
 }
 
 /* Fullscreen Button */
