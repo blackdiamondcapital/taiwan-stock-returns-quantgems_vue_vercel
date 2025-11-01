@@ -53,13 +53,13 @@ function toIsoDate(value) {
 }
 
 const PERIOD_CONFIG = {
-  '1D': { lookbackDays: 180, bucket: 'day' },
-  '1W': { lookbackDays: 365, bucket: 'week' },
-  '1M': { lookbackDays: 365 * 3, bucket: 'month' },
-  '3M': { lookbackDays: 365 * 2, bucket: 'week' },
-  '6M': { lookbackDays: 365 * 4, bucket: 'month' },
-  '1Y': { lookbackDays: 365 * 6, bucket: 'month' },
-  '2Y': { lookbackDays: 365 * 8, bucket: 'month' }
+  '1D': { lookbackDays: 365 * 3, bucket: 'day' },   // 日K：3年
+  '1W': { lookbackDays: 365 * 5, bucket: 'week' },  // 週K：5年
+  '1M': { lookbackDays: 365 * 10, bucket: 'month' },// 月K：10年
+  '3M': { lookbackDays: 365 * 6, bucket: 'week' },  // 3個月視圖：6年（以週聚合）
+  '6M': { lookbackDays: 365 * 12, bucket: 'month' },// 半年視圖：12年（以月聚合）
+  '1Y': { lookbackDays: 365 * 20, bucket: 'month' },// 一年視圖：20年（以月聚合）
+  '2Y': { lookbackDays: 365 * 25, bucket: 'month' } // 兩年視圖：25年（以月聚合）
 };
 
 function resolvePeriodConfig(period = '1M') {
