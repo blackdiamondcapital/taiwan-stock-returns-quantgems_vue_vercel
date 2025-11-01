@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import StockChartECharts from './StockChartECharts.vue'
 import { fetchStockPriceHistory, fetchStockQuote } from '../services/api'
 
@@ -11,6 +11,7 @@ const errorMessage = ref('')
 const isLoading = ref(false)
 const noDataWarning = ref(false)
 const chartKey = ref(0)
+const chartRef = ref(null)
 
 // 常見台股代號建議
 const popularStocks = [
@@ -45,7 +46,7 @@ function selectStock(symbol) {
   searchStock()
 }
 
-async function searchStock() {
+async function searchStock(fromFullscreen = false) {
   errorMessage.value = ''
   noDataWarning.value = false
   
@@ -94,8 +95,15 @@ async function searchStock() {
       }
     }
     showChart.value = true
-    // Force chart component to re-render with new symbol
-    chartKey.value++
+    // 若不是全螢幕內查詢，透過 remount 以確保初次載入
+    if (!fromFullscreen) {
+      chartKey.value++
+    }
+    await nextTick()
+    // 一般查詢完成後自動進入全螢幕
+    if (!fromFullscreen && chartRef.value && typeof chartRef.value.enterFullscreen === 'function') {
+      chartRef.value.enterFullscreen()
+    }
   } catch (error) {
     console.error('檢查股票數據失敗:', error)
     errorMessage.value = '查詢失敗，請稍後再試'
@@ -107,7 +115,7 @@ async function searchStock() {
 
 function handleKeyPress(event) {
   if (event.key === 'Enter') {
-    searchStock()
+    searchStock(false)
   }
 }
 
@@ -118,6 +126,17 @@ function clearSearch() {
   errorMessage.value = ''
   noDataWarning.value = false
   isLoading.value = false
+}
+
+async function onChartSearchSymbol(sym) {
+  stockSymbol.value = sym
+  // 來自全螢幕的查詢：不 remount，避免退出全螢幕
+  await searchStock(true)
+  // 若因為任何原因退出了全螢幕，重新進入
+  await nextTick()
+  if (chartRef.value && typeof chartRef.value.enterFullscreen === 'function') {
+    chartRef.value.enterFullscreen()
+  }
 }
 </script>
 
@@ -217,7 +236,14 @@ function clearSearch() {
       </div>
       
       <div class="chart-wrapper">
-        <StockChartECharts :key="chartKey" :symbol="searchedSymbol" :stockName="stockName" :period="'1D'" />
+        <StockChartECharts
+          ref="chartRef"
+          :key="chartKey"
+          :symbol="searchedSymbol"
+          :stockName="stockName"
+          :period="'1D'"
+          @search-symbol="onChartSearchSymbol"
+        />
       </div>
     </div>
 
