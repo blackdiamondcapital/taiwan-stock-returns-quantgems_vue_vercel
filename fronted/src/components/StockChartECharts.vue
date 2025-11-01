@@ -111,7 +111,6 @@ const controlPanelOpen = ref(localStorage.getItem('chartControlPanelOpen') === '
 // Panel section collapse states
 const panelSections = ref({
   ma: localStorage.getItem('chartPanelMA') === 'true',
-  kline: localStorage.getItem('chartPanelKLine') === 'true',
   indicators: localStorage.getItem('chartPanelIndicators') === 'true'
 })
 
@@ -424,6 +423,18 @@ function renderChart() {
   const kdData = showKD.value ? calculateKD(ohlc, kdParams.value.period, kdParams.value.k, kdParams.value.d) : null
   const macdData = showMACD.value ? calculateMACD(ohlc, macdParams.value.fast, macdParams.value.slow, macdParams.value.signal) : null
   
+  // Debug: Log MACD data availability
+  if (macdData && showMACD.value) {
+    const validMacdCount = macdData.macd.filter(v => v !== '-').length
+    const validSignalCount = macdData.signal.filter(v => v !== '-').length
+    const totalDataPoints = ohlc.length
+    const requiredPoints = macdParams.value.slow + macdParams.value.signal
+    console.log(`MACD Debug: Total data=${totalDataPoints}, Required=${requiredPoints}, Valid MACD=${validMacdCount}, Valid Signal=${validSignalCount}`)
+    if (totalDataPoints < requiredPoints) {
+      console.warn(`⚠️ MACD 參數過大：需要至少 ${requiredPoints} 個數據點，但只有 ${totalDataPoints} 個`)
+    }
+  }
+  
   // Unified MACD scale for all periods (day/week/month): symmetric around 0
   let macdScale = 1
   if (macdData) {
@@ -508,6 +519,31 @@ function renderChart() {
       shape: { width: '100%', height: hPx },
       style: { fill: chartBg }
     })
+  }
+  
+  // Add warning text if MACD parameters are too large
+  if (showMACD.value && macdData) {
+    const validMacdCount = macdData.macd.filter(v => v !== '-').length
+    const totalDataPoints = ohlc.length
+    const requiredPoints = macdParams.value.slow + macdParams.value.signal
+    const dataPercentage = totalDataPoints > 0 ? (validMacdCount / totalDataPoints * 100).toFixed(0) : 0
+    
+    if (totalDataPoints < requiredPoints || dataPercentage < 50) {
+      const macdGrid = grids[idxMACD]
+      separators.push({
+        type: 'text',
+        z: 100,
+        left: 'center',
+        top: macdGrid.top + macdGrid.height / 2 - 20,
+        style: {
+          text: `⚠️ MACD 參數過大\n需要 ${requiredPoints} 個數據點，目前只有 ${totalDataPoints} 個\n僅 ${dataPercentage}% 的數據可顯示`,
+          font: 'bold 14px sans-serif',
+          fill: 'rgba(245, 158, 11, 0.9)',
+          textAlign: 'center',
+          textVerticalAlign: 'middle'
+        }
+      })
+    }
   }
   // After main -> before KD (legend band already occupies here)
   if (showKD.value) {
@@ -836,8 +872,25 @@ function renderChart() {
       {
         type: 'inside',
         xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
-        start: 0,
-        end: 100
+        // 預設顯示最後 120 根K，留下空間可向左拖曳
+        startValue: Math.max(0, dates.length - 120),
+        endValue: Math.max(0, dates.length - 1),
+        zoomOnMouseWheel: true,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: true
+      },
+      {
+        type: 'slider',
+        xAxisIndex: [0, ...(showKD.value ? [idxKD] : []), ...(showMACD.value ? [idxMACD] : []), ...(showVolume.value ? [idxVol] : [])],
+        startValue: Math.max(0, dates.length - 120),
+        endValue: Math.max(0, dates.length - 1),
+        bottom: 6,
+        height: 18,
+        backgroundColor: 'rgba(15, 23, 42, 0.5)',
+        fillerColor: 'rgba(59, 130, 246, 0.2)',
+        borderColor: 'rgba(100, 200, 255, 0.2)',
+        handleStyle: { color: 'rgba(59, 130, 246, 0.8)' },
+        textStyle: { color: 'rgba(226, 232, 240, 0.6)', fontSize: 10 }
       }
     ],
     series: [
@@ -1156,6 +1209,28 @@ onUnmounted(() => {
           {{ option.label }}
         </button>
         
+        <!-- K線模式切換 -->
+        <div class="kline-mode-toggle">
+          <button 
+            class="mode-btn" 
+            :class="{ active: chartMode === 'standard' }"
+            @click="chartMode = 'standard'; renderChart()"
+            title="原始K線"
+          >
+            <i class="fas fa-chart-bar"></i>
+            <span>原始K線</span>
+          </button>
+          <button 
+            class="mode-btn" 
+            :class="{ active: chartMode === 'heikin' }"
+            @click="chartMode = 'heikin'; renderChart()"
+            title="神奇K線"
+          >
+            <i class="fas fa-magic"></i>
+            <span>神奇K線</span>
+          </button>
+        </div>
+        
         <!-- 全螢幕模式下顯示的按鈕 -->
         <div class="fullscreen-actions">
           <button 
@@ -1271,35 +1346,6 @@ onUnmounted(() => {
           </div>
           
           <div class="panel-section">
-            <div class="section-header" @click="togglePanelSection('kline')">
-              <label class="section-label">K線模式</label>
-              <i class="fas fa-chevron-down section-toggle" :class="{ 'rotated': !panelSections.kline }"></i>
-            </div>
-            <transition name="collapse">
-              <div v-show="panelSections.kline">
-              <div class="mode-toggle-switch">
-              <button 
-                class="toggle-btn" 
-                :class="{ active: chartMode === 'standard' }" 
-                @click="chartMode = 'standard'; renderChart()"
-              >
-                <i class="fas fa-chart-bar"></i>
-                <span>原始K線</span>
-              </button>
-              <button 
-                class="toggle-btn" 
-                :class="{ active: chartMode === 'heikin' }" 
-                @click="chartMode = 'heikin'; renderChart()"
-              >
-                <i class="fas fa-magic"></i>
-                <span>神奇K線</span>
-              </button>
-            </div>
-              </div>
-            </transition>
-          </div>
-          
-          <div class="panel-section">
             <div class="section-header" @click="togglePanelSection('indicators')">
               <label class="section-label">技術指標</label>
               <i class="fas fa-chevron-down section-toggle" :class="{ 'rotated': !panelSections.indicators }"></i>
@@ -1376,7 +1422,7 @@ onUnmounted(() => {
                     type="number" 
                     v-model.number="macdParams.fast" 
                     min="5" 
-                    max="50" 
+                    max="200" 
                     @change="saveMACDParams"
                     class="param-input"
                   />
@@ -1387,7 +1433,7 @@ onUnmounted(() => {
                     type="number" 
                     v-model.number="macdParams.slow" 
                     min="10" 
-                    max="100" 
+                    max="300" 
                     @change="saveMACDParams"
                     class="param-input"
                   />
@@ -1398,10 +1444,14 @@ onUnmounted(() => {
                     type="number" 
                     v-model.number="macdParams.signal" 
                     min="3" 
-                    max="20" 
+                    max="50" 
                     @change="saveMACDParams"
                     class="param-input"
                   />
+                </div>
+                <div v-if="chartData.length > 0 && (macdParams.slow + macdParams.signal) > chartData.length" class="param-warning">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  <span>參數過大！需要至少 {{ macdParams.slow + macdParams.signal }} 個數據點，目前只有 {{ chartData.length }} 個</span>
                 </div>
               </div>
               
@@ -1551,6 +1601,53 @@ onUnmounted(() => {
   transform: translateY(-2px);
 }
 
+/* K線模式切換 */
+.kline-mode-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 16px;
+  padding: 4px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 24px;
+  border: 1px solid rgba(100, 200, 255, 0.2);
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.6);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.mode-btn i {
+  font-size: 0.9rem;
+}
+
+.mode-btn:hover {
+  color: rgba(226, 232, 240, 0.9);
+  background: rgba(100, 200, 255, 0.1);
+  border-color: rgba(100, 200, 255, 0.2);
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8));
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
 /* Fullscreen actions container */
 .fullscreen-actions {
   display: none;
@@ -1646,6 +1743,11 @@ onUnmounted(() => {
   justify-content: center !important;
   align-items: center !important;
   gap: 12px !important;
+}
+
+.stock-chart:fullscreen .kline-mode-toggle {
+  margin-left: 16px !important;
+  margin-right: 16px !important;
 }
 
 .stock-chart:fullscreen .fullscreen-actions {
@@ -2096,6 +2198,32 @@ onUnmounted(() => {
 
 .param-input:hover {
   border-color: rgba(100, 200, 255, 0.4);
+}
+
+/* Parameter Warning */
+.param-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  color: rgba(251, 191, 36, 0.95);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.param-warning i {
+  color: rgba(245, 158, 11, 0.9);
+  font-size: 0.9rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.param-warning span {
+  flex: 1;
 }
 
 /* Panel Backdrop */
